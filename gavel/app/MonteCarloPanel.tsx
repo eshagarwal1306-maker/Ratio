@@ -14,7 +14,7 @@ interface AgentSnapshot {
 }
 
 interface SimResult {
-  histogram: number[]; // 20 buckets, each spans 5 pts
+  histogram: number[];
   mean: number;
   stdDev: number;
   p5: number;
@@ -25,7 +25,7 @@ interface SimResult {
   n: number;
 }
 
-// ── Jack & Jill demo defaults ─────────────────────────────────────────────────
+// ── Demo defaults ─────────────────────────────────────────────────────────────
 
 const DEMO_SNAPSHOT: AgentSnapshot = {
   sourcerStatus: "INFERRED",
@@ -36,53 +36,62 @@ const DEMO_SNAPSHOT: AgentSnapshot = {
   memoryStatus: "CONTRADICTION_FOUND",
 };
 
-// ── Monte Carlo core ──────────────────────────────────────────────────────────
+// ── Snapshot from real results (worst-case across all claims) ─────────────────
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function snapshotFromResults(results: any[]): AgentSnapshot | null {
   if (!results.length) return null;
-  const r = results[0];
+  const worstSourcer = results.some((r) => r.sourcer?.status === "NOT_FOUND")
+    ? "NOT_FOUND"
+    : results.some((r) => r.sourcer?.status === "INFERRED")
+      ? "INFERRED"
+      : "CITED";
+  const worstJurisd = results.some((r) => r.jurisdictionist?.status === "WRONG_JURISDICTION")
+    ? "WRONG_JURISDICTION"
+    : results.some((r) => r.jurisdictionist?.status === "UNCLEAR")
+      ? "UNCLEAR"
+      : "APPLICABLE";
+  const maxConf = Math.max(...results.map((r) => r.jurisdictionist?.confidence ?? 50));
+  const worstHist = results.some((r) => r.historian?.status === "AMENDED")
+    ? "AMENDED"
+    : results.some((r) => r.historian?.status === "UNKNOWN")
+      ? "UNKNOWN"
+      : "CURRENT";
+  const worstDevil = results.some((r) => r.devils_advocate?.strength === "high")
+    ? "high"
+    : results.some((r) => r.devils_advocate?.strength === "medium")
+      ? "medium"
+      : "low";
+  const worstMem = results.some((r) => r.firm_memory?.status === "CONTRADICTION_FOUND")
+    ? "CONTRADICTION_FOUND"
+    : "NO_CONFLICT";
   return {
-    sourcerStatus: r.sourcer?.status ?? "NOT_FOUND",
-    jurisdictionStatus: r.jurisdictionist?.status ?? "UNCLEAR",
-    jurisdictionConfidence: r.jurisdictionist?.confidence ?? 50,
-    historianStatus: r.historian?.status ?? "UNKNOWN",
-    devilStrength: r.devils_advocate?.strength ?? "high",
-    memoryStatus: r.firm_memory?.status ?? "NO_CONFLICT",
+    sourcerStatus: worstSourcer,
+    jurisdictionStatus: worstJurisd,
+    jurisdictionConfidence: maxConf,
+    historianStatus: worstHist,
+    devilStrength: worstDevil,
+    memoryStatus: worstMem,
   };
 }
 
+// ── Monte Carlo core ──────────────────────────────────────────────────────────
+
 function runIteration(snap: AgentSnapshot): number {
   let deduction = 0;
-
-  // Citation sourcer (w=20)
-  const pSourcer = snap.sourcerStatus === "NOT_FOUND" ? 0.95
-    : snap.sourcerStatus === "INFERRED" ? 0.65 : 0.05;
+  const pSourcer = snap.sourcerStatus === "NOT_FOUND" ? 0.95 : snap.sourcerStatus === "INFERRED" ? 0.65 : 0.05;
   if (Math.random() < pSourcer) deduction += 20;
-
-  // Jurisdictionist (w=25)
   const pJurisd = snap.jurisdictionStatus === "WRONG_JURISDICTION"
     ? snap.jurisdictionConfidence / 100
     : snap.jurisdictionStatus === "UNCLEAR" ? 0.45 : 0.05;
   if (Math.random() < pJurisd) deduction += 25;
-
-  // Historian (w=15)
-  const pHist = snap.historianStatus === "AMENDED" ? 0.78
-    : snap.historianStatus === "UNKNOWN" ? 0.38 : 0.05;
+  const pHist = snap.historianStatus === "AMENDED" ? 0.78 : snap.historianStatus === "UNKNOWN" ? 0.38 : 0.05;
   if (Math.random() < pHist) deduction += 15;
-
-  // Devil's Advocate (w=20)
-  const pDevil = snap.devilStrength === "high" ? 0.85
-    : snap.devilStrength === "medium" ? 0.55 : 0.18;
+  const pDevil = snap.devilStrength === "high" ? 0.85 : snap.devilStrength === "medium" ? 0.55 : 0.18;
   if (Math.random() < pDevil) deduction += 20;
-
-  // Firm Memory (w=20)
-  const pMemory = snap.memoryStatus === "CONTRADICTION_FOUND" ? 0.90 : 0.05;
-  if (Math.random() < pMemory) deduction += 20;
-
-  // Regulatory interpretation noise — triangular distribution ±12 pts
+  const pMem = snap.memoryStatus === "CONTRADICTION_FOUND" ? 0.90 : 0.05;
+  if (Math.random() < pMem) deduction += 20;
   const noise = (Math.random() + Math.random() - 1) * 12;
-
   return Math.max(0, Math.min(100, 100 - deduction + noise));
 }
 
@@ -90,19 +99,14 @@ function computeStats(scores: number[]): SimResult {
   const n = scores.length;
   const histogram = new Array(20).fill(0);
   let sum = 0, dontSend = 0, review = 0, proceed = 0;
-
   for (const s of scores) {
     histogram[Math.min(19, Math.floor(s / 5))]++;
     sum += s;
-    if (s < 40) dontSend++;
-    else if (s < 70) review++;
-    else proceed++;
+    if (s < 40) dontSend++; else if (s < 70) review++; else proceed++;
   }
-
   const mean = sum / n;
   const variance = scores.reduce((a, s) => a + (s - mean) ** 2, 0) / n;
   const sorted = [...scores].sort((a, b) => a - b);
-
   return {
     histogram,
     mean,
@@ -117,7 +121,22 @@ function computeStats(scores: number[]): SimResult {
 }
 
 const N_TOTAL = 2000;
-const BATCH  = 80;
+const BATCH   = 100;
+
+// ── Advice types ──────────────────────────────────────────────────────────────
+
+interface AdviceFlaggedArea {
+  claim_snippet: string;
+  issue: string;
+  suggestion: string;
+  recommended_sources: string[];
+}
+
+interface Advice {
+  summary: string;
+  flagged_areas: AdviceFlaggedArea[];
+  overall_recommendation: string;
+}
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -127,17 +146,26 @@ export function MonteCarloPanel({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   claimResults: any[];
 }) {
-  const [running, setRunning]   = useState(false);
   const [progress, setProgress] = useState(0);
   const [result, setResult]     = useState<SimResult | null>(null);
-  const [liveResult, setLive]   = useState<SimResult | null>(null);
-  const rafRef   = useRef<number>(0);
+  const [live, setLive]         = useState<SimResult | null>(null);
+  const [running, setRunning]   = useState(false);
+  const [advice, setAdvice]     = useState<Advice | null>(null);
+  const [adviceLoading, setAdviceLoading] = useState(false);
+  const rafRef    = useRef<number>(0);
   const scoresRef = useRef<number[]>([]);
 
   const snapshot  = snapshotFromResults(claimResults) ?? DEMO_SNAPSHOT;
   const usingDemo = claimResults.length === 0;
+  const display   = live ?? result;
+  const maxBucket = display ? Math.max(...display.histogram, 1) : 1;
 
-  useEffect(() => () => { cancelAnimationFrame(rafRef.current); }, []);
+  // Auto-run on mount
+  useEffect(() => {
+    const id = setTimeout(() => startSimulation(), 400);
+    return () => { clearTimeout(id); cancelAnimationFrame(rafRef.current); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function startSimulation() {
     cancelAnimationFrame(rafRef.current);
@@ -146,13 +174,13 @@ export function MonteCarloPanel({
     setProgress(0);
     setResult(null);
     setLive(null);
+    setAdvice(null);
 
     function runBatch() {
       for (let i = 0; i < BATCH; i++) scoresRef.current.push(runIteration(snapshot));
       const done = scoresRef.current.length;
       setProgress(done / N_TOTAL);
-      if (done % (BATCH * 4) === 0) setLive(computeStats(scoresRef.current));
-
+      if (done % (BATCH * 5) === 0) setLive(computeStats(scoresRef.current));
       if (done < N_TOTAL) {
         rafRef.current = requestAnimationFrame(runBatch);
       } else {
@@ -162,262 +190,302 @@ export function MonteCarloPanel({
         setRunning(false);
       }
     }
-
     rafRef.current = requestAnimationFrame(runBatch);
   }
 
-  const display = liveResult ?? result;
-  const maxBucket = display ? Math.max(...display.histogram, 1) : 1;
+  async function getAdvice() {
+    if (!result || adviceLoading) return;
+    setAdviceLoading(true);
+    setAdvice(null);
+    try {
+      const res = await fetch("/api/monte-carlo-advice", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ claimResults, meanScore: result.mean }),
+      });
+      const data: Advice = await res.json();
+      setAdvice(data);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setAdviceLoading(false);
+    }
+  }
 
-  // Agent input pills
-  const agentInputs = [
+  // Dominant verdict
+  const verdictLabel = !display ? null
+    : display.pDontSend > display.pReview && display.pDontSend > display.pProceed ? "DO NOT SEND"
+    : display.pProceed  > display.pReview && display.pProceed  > display.pDontSend ? "PROCEED"
+    : "REVIEW REQUIRED";
+  const verdictColor = verdictLabel === "DO NOT SEND" ? "#b91c1c"
+    : verdictLabel === "PROCEED" ? "#15803d" : "#92400e";
+  const verdictBg = verdictLabel === "DO NOT SEND" ? "#fef2f2"
+    : verdictLabel === "PROCEED" ? "#f0fdf4" : "#fffbeb";
+  const verdictPct = !display ? 0
+    : verdictLabel === "DO NOT SEND" ? display.pDontSend
+    : verdictLabel === "PROCEED" ? display.pProceed
+    : display.pReview;
+
+  // Risk factors summary
+  const factors = [
     {
-      label: "Sourcer",
-      value: snapshot.sourcerStatus,
-      p: snapshot.sourcerStatus === "NOT_FOUND" ? 95 : snapshot.sourcerStatus === "INFERRED" ? 65 : 5,
-      color: "#00d98b", weight: 20,
+      label: "Citation accuracy",
+      status: snapshot.sourcerStatus === "CITED" ? "ok" : snapshot.sourcerStatus === "INFERRED" ? "warn" : "bad",
+      text: snapshot.sourcerStatus === "CITED" ? "Sources verified" : snapshot.sourcerStatus === "INFERRED" ? "Citations inferred" : "Sources not found",
     },
     {
       label: "Jurisdiction",
-      value: snapshot.jurisdictionStatus.replace(/_/g, " "),
-      p: snapshot.jurisdictionStatus === "WRONG_JURISDICTION"
-        ? snapshot.jurisdictionConfidence
-        : snapshot.jurisdictionStatus === "UNCLEAR" ? 45 : 5,
-      color: "#9f7aea", weight: 25,
+      status: snapshot.jurisdictionStatus === "APPLICABLE" ? "ok" : snapshot.jurisdictionStatus === "UNCLEAR" ? "warn" : "bad",
+      text: snapshot.jurisdictionStatus === "APPLICABLE" ? "In scope"
+        : snapshot.jurisdictionStatus === "UNCLEAR" ? "Scope unclear"
+        : `Wrong jurisdiction (${snapshot.jurisdictionConfidence}% confidence)`,
     },
     {
-      label: "Historian",
-      value: snapshot.historianStatus,
-      p: snapshot.historianStatus === "AMENDED" ? 78 : snapshot.historianStatus === "UNKNOWN" ? 38 : 5,
-      color: "#f5a623", weight: 15,
+      label: "Law currency",
+      status: snapshot.historianStatus === "CURRENT" ? "ok" : snapshot.historianStatus === "UNKNOWN" ? "warn" : "bad",
+      text: snapshot.historianStatus === "CURRENT" ? "Law is current" : snapshot.historianStatus === "UNKNOWN" ? "Currency unknown" : "Law has been amended",
     },
     {
-      label: "Devil's Adv.",
-      value: snapshot.devilStrength.toUpperCase(),
-      p: snapshot.devilStrength === "high" ? 85 : snapshot.devilStrength === "medium" ? 55 : 18,
-      color: "#ff6b6b", weight: 20,
+      label: "Counter-arguments",
+      status: snapshot.devilStrength === "low" ? "ok" : snapshot.devilStrength === "medium" ? "warn" : "bad",
+      text: snapshot.devilStrength === "low" ? "Weak counter-case" : snapshot.devilStrength === "medium" ? "Moderate counter-case" : "Strong counter-case found",
     },
     {
-      label: "Firm Memory",
-      value: snapshot.memoryStatus.replace(/_/g, " "),
-      p: snapshot.memoryStatus === "CONTRADICTION_FOUND" ? 90 : 5,
-      color: "#00d9d9", weight: 20,
+      label: "Firm conflicts",
+      status: snapshot.memoryStatus === "NO_CONFLICT" ? "ok" : "bad",
+      text: snapshot.memoryStatus === "NO_CONFLICT" ? "No prior conflicts" : "Contradicts prior advice",
     },
   ];
+  const STATUS_COLOR: Record<string, string> = { ok: "#15803d", warn: "#92400e", bad: "#b91c1c" };
+  const STATUS_BG:    Record<string, string> = { ok: "#f0fdf4", warn: "#fffbeb", bad: "#fef2f2" };
+  const STATUS_ICON:  Record<string, string> = { ok: "✓", warn: "⚠", bad: "✕" };
 
   return (
-    <div className="h-full overflow-y-auto p-5 space-y-5">
+    <div className="h-full overflow-y-auto bg-white" style={{ padding: "28px 28px 48px" }}>
 
       {/* Header */}
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex items-center justify-between mb-6">
         <div>
-          <p className="text-[9px] text-zinc-500 uppercase tracking-widest mb-0.5">Monte Carlo Risk Simulation</p>
-          <h2 className="text-sm font-bold text-zinc-200">Score Distribution Analysis</h2>
-          {usingDemo && (
-            <p className="text-[10px] text-zinc-600 mt-1 italic">
-              Using Jack &amp; Jill demo scenario — run an audit to simulate real findings
-            </p>
-          )}
+          <h2 className="text-base font-bold text-slate-900">Risk Simulation</h2>
+          <p className="text-xs text-slate-400 mt-0.5">
+            Monte Carlo · N = {N_TOTAL.toLocaleString()} simulations ·{" "}
+            {usingDemo
+              ? <span className="italic">demo scenario</span>
+              : <span>{claimResults.length} claims</span>}
+          </p>
         </div>
         <button
           onClick={startSimulation}
           disabled={running}
-          className={`shrink-0 px-4 py-2 rounded-xl text-[11px] font-bold tracking-widest uppercase transition-all ${
-            running
-              ? "bg-zinc-800 text-zinc-500 cursor-not-allowed"
-              : result
-                ? "bg-zinc-700 text-zinc-200 hover:bg-zinc-600"
-                : "bg-blue-600 text-white hover:bg-blue-500"
-          }`}
+          className="px-4 py-2 rounded-lg text-xs font-semibold border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 transition-all"
         >
-          {running ? `${Math.round(progress * 100)}%…` : result ? "↺ Re-run" : "▶ Run  N=2,000"}
+          {running ? `${Math.round(progress * 100)}%…` : "↺ Re-run"}
         </button>
-      </div>
-
-      {/* Agent inputs → probability */}
-      <div className="rounded-xl border border-zinc-800/60 bg-zinc-900/20 p-4">
-        <p className="text-[9px] text-zinc-600 uppercase tracking-widest mb-3">
-          Agent findings → error probability inputs
-        </p>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
-          {agentInputs.map((ag) => (
-            <div key={ag.label} className="rounded-lg border border-zinc-800/60 bg-zinc-900/30 p-2.5 space-y-1.5">
-              <div className="flex items-center justify-between">
-                <span className="text-[8px] text-zinc-500 uppercase tracking-widest">{ag.label}</span>
-                <span className="text-[7px] text-zinc-700">w={ag.weight}%</span>
-              </div>
-              <p className="text-[9px] font-bold leading-tight" style={{ color: ag.color }}>
-                {ag.value}
-              </p>
-              <div className="flex items-center gap-1.5">
-                <div className="flex-1 h-1 rounded-full bg-zinc-800 overflow-hidden">
-                  <div
-                    className="h-full rounded-full transition-all"
-                    style={{ width: `${ag.p}%`, backgroundColor: ag.color + "80" }}
-                  />
-                </div>
-                <span className="text-[8px] text-zinc-600 tabular-nums w-6 text-right">{ag.p}%</span>
-              </div>
-            </div>
-          ))}
-        </div>
-        <p className="text-[8px] text-zinc-700 mt-2">
-          Each iteration samples Bernoulli(p) per agent + triangular noise ±12 pts. Weights sum to 100.
-        </p>
       </div>
 
       {/* Progress bar */}
       {running && (
-        <div className="space-y-1">
-          <div className="flex justify-between text-[9px] text-zinc-600">
-            <span className="animate-pulse">Simulating…</span>
-            <span className="tabular-nums">
-              {Math.min(scoresRef.current.length, N_TOTAL).toLocaleString()} / {N_TOTAL.toLocaleString()}
-            </span>
-          </div>
-          <div className="h-1.5 rounded-full bg-zinc-800 overflow-hidden">
+        <div className="mb-6">
+          <div className="h-1 rounded-full bg-slate-100 overflow-hidden">
             <div
               className="h-full rounded-full bg-blue-500 transition-all duration-100"
               style={{ width: `${Math.round(progress * 100)}%` }}
             />
           </div>
+          <p className="text-[10px] text-slate-400 mt-1.5 text-right">
+            {Math.min(scoresRef.current.length, N_TOTAL).toLocaleString()} / {N_TOTAL.toLocaleString()} iterations
+          </p>
         </div>
       )}
 
-      {/* Histogram */}
-      {display && (
-        <>
-          <div className="rounded-xl border border-zinc-800/60 bg-zinc-900/20 p-4">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-[9px] text-zinc-600 uppercase tracking-widest">
-                Score Distribution
-              </p>
-              <span className="text-[9px] text-zinc-700 tabular-nums">
-                N = {display.n.toLocaleString()}
-              </span>
-            </div>
+      {/* ── Hero verdict ── */}
+      {display && verdictLabel && (
+        <div
+          className="rounded-2xl border p-6 mb-6 text-center"
+          style={{ backgroundColor: verdictBg, borderColor: verdictColor + "30" }}
+        >
+          <p className="text-xs font-semibold uppercase tracking-widest mb-2" style={{ color: verdictColor + "80" }}>
+            Most likely outcome
+          </p>
+          <p className="text-3xl font-bold mb-1" style={{ color: verdictColor }}>
+            {verdictLabel}
+          </p>
+          <p className="text-sm font-medium" style={{ color: verdictColor + "99" }}>
+            {verdictPct.toFixed(1)}% of simulated audits
+          </p>
 
-            {/* Bars */}
-            <div className="flex items-end gap-px h-28">
-              {display.histogram.map((count, i) => {
-                const score = i * 5;
-                const pct = count / maxBucket;
-                const barColor = score < 40 ? "#ff3b5c" : score < 70 ? "#f5a623" : "#00d98b";
-                const pctOfTotal = ((count / display.n) * 100).toFixed(1);
-                return (
-                  <div key={i} className="relative flex-1 group flex flex-col justify-end h-full">
-                    <div
-                      className="w-full rounded-t-sm transition-all duration-200"
-                      style={{
-                        height: `${Math.round(pct * 100)}%`,
-                        backgroundColor: barColor + "88",
-                        minHeight: count > 0 ? 2 : 0,
-                      }}
-                    />
-                    {/* hover tooltip */}
-                    <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 hidden group-hover:block z-10 pointer-events-none">
-                      <div className="bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-[8px] text-zinc-300 whitespace-nowrap">
-                        {score}–{score + 4}: {pctOfTotal}%
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* X-axis */}
-            <div className="flex justify-between text-[8px] text-zinc-700 mt-1.5 px-0.5">
-              {["0", "25", "50", "75", "100"].map((l) => <span key={l}>{l}</span>)}
-            </div>
-
-            {/* Zone underline */}
-            <div className="flex mt-1 h-1 rounded-full overflow-hidden gap-px">
-              <div className="w-[40%] bg-rose-900/50" />
-              <div className="w-[30%] bg-amber-900/50" />
-              <div className="w-[30%] bg-emerald-900/50" />
-            </div>
+          {/* Split bar */}
+          <div className="flex h-2 rounded-full overflow-hidden mt-4 gap-px">
+            <div
+              className="transition-all duration-700 rounded-l-full"
+              style={{ width: `${display.pDontSend}%`, backgroundColor: "#ef4444" }}
+            />
+            <div
+              className="transition-all duration-700"
+              style={{ width: `${display.pReview}%`, backgroundColor: "#f59e0b" }}
+            />
+            <div
+              className="transition-all duration-700 rounded-r-full"
+              style={{ width: `${display.pProceed}%`, backgroundColor: "#22c55e" }}
+            />
           </div>
-
-          {/* Outcome probabilities */}
-          <div className="grid grid-cols-3 gap-3">
-            {[
-              { label: "DO NOT SEND", p: display.pDontSend, color: "#ff3b5c", sub: "score < 40" },
-              { label: "REVIEW",      p: display.pReview,   color: "#f5a623", sub: "40 – 70" },
-              { label: "PROCEED",     p: display.pProceed,  color: "#00d98b", sub: "score ≥ 70" },
-            ].map((o) => (
-              <div
-                key={o.label}
-                className="rounded-xl border p-4 text-center space-y-0.5 transition-all"
-                style={{ borderColor: o.color + "35", backgroundColor: o.color + "08" }}
-              >
-                <p
-                  className="text-2xl font-bold tabular-nums"
-                  style={{ color: o.color }}
-                >
-                  {o.p.toFixed(1)}<span className="text-sm font-normal">%</span>
-                </p>
-                <p className="text-[9px] uppercase tracking-widest text-zinc-500">{o.label}</p>
-                <p className="text-[8px] text-zinc-700">{o.sub}</p>
-              </div>
-            ))}
+          <div className="flex justify-between text-[10px] mt-1.5" style={{ color: verdictColor + "70" }}>
+            <span>Don&apos;t send {display.pDontSend.toFixed(0)}%</span>
+            <span>Review {display.pReview.toFixed(0)}%</span>
+            <span>Proceed {display.pProceed.toFixed(0)}%</span>
           </div>
-
-          {/* Stats grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {[
-              { label: "E[score]",  value: display.mean.toFixed(1),   color: "#c8c8d8", sub: "expected" },
-              { label: "σ",         value: display.stdDev.toFixed(1), color: "#818cf8", sub: "std deviation" },
-              { label: "P5",        value: display.p5.toFixed(0),     color: "#ff6b6b", sub: "worst 5%" },
-              { label: "P95",       value: display.p95.toFixed(0),    color: "#4ade80", sub: "best 5%" },
-            ].map((s) => (
-              <div key={s.label} className="rounded-xl border border-zinc-800 bg-zinc-900/30 p-3 text-center">
-                <p className="text-[9px] text-zinc-600 uppercase tracking-widest mb-0.5">{s.label}</p>
-                <p className="text-xl font-bold tabular-nums" style={{ color: s.color }}>{s.value}</p>
-                <p className="text-[8px] text-zinc-700 mt-0.5">{s.sub}</p>
-              </div>
-            ))}
-          </div>
-
-          {/* Interpretation */}
-          <div className="rounded-xl border border-zinc-800/60 bg-zinc-900/20 p-4 text-[11px] text-zinc-500 leading-relaxed space-y-2">
-            <p className="text-[9px] text-zinc-600 uppercase tracking-widest">Interpretation</p>
-            <p>
-              Across {display.n.toLocaleString()} simulated audits sampling from each agent&apos;s
-              confidence distribution, the expected GAVEL score is{" "}
-              <span className="text-zinc-300 font-bold">{display.mean.toFixed(1)}/100</span>{" "}
-              (σ&nbsp;=&nbsp;{display.stdDev.toFixed(1)}). There is a{" "}
-              <span style={{ color: "#ff3b5c" }} className="font-bold">
-                {display.pDontSend.toFixed(1)}%
-              </span>{" "}
-              probability of a <em>DO NOT SEND</em> verdict under realistic interpretive variance.
-            </p>
-            <p>
-              Even the best-case scenario (P95&nbsp;=&nbsp;{display.p95.toFixed(0)}) suggests{" "}
-              {display.p95 < 40
-                ? "the memo does not reach review threshold in any plausible scenario."
-                : display.p95 < 70
-                  ? "the memo enters review territory but does not clear for sending."
-                  : "a marginal pass — requiring careful partner-level review."}
-            </p>
-            {!running && (
-              <p className="text-[9px] text-zinc-700 pt-1 border-t border-zinc-800">
-                Model: 5 Bernoulli trials weighted {agentInputs.map((a) => a.weight).join("/")}, noise ~ Triangular(−12, 0, +12)
-              </p>
-            )}
-          </div>
-        </>
+        </div>
       )}
 
-      {/* Empty state */}
+      {/* ── Stats row ── */}
+      {display && (
+        <div className="grid grid-cols-4 gap-3 mb-6">
+          {[
+            { label: "Expected score", value: display.mean.toFixed(1), sub: "/ 100" },
+            { label: "Std deviation", value: "±" + display.stdDev.toFixed(1), sub: "pts" },
+            { label: "Worst 5%", value: display.p5.toFixed(0), sub: "P5" },
+            { label: "Best 5%", value: display.p95.toFixed(0), sub: "P95" },
+          ].map((s) => (
+            <div key={s.label} className="rounded-xl border border-slate-100 bg-slate-50 p-3 text-center">
+              <p className="text-[10px] text-slate-400 mb-1">{s.label}</p>
+              <p className="text-xl font-bold text-slate-900 leading-none">
+                {s.value}
+                <span className="text-xs font-normal text-slate-400 ml-0.5">{s.sub}</span>
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Histogram ── */}
+      {display && (
+        <div className="rounded-2xl border border-slate-100 bg-slate-50 p-5 mb-6">
+          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-4">Score distribution</p>
+          <div className="flex items-end gap-0.5 h-24">
+            {display.histogram.map((count, i) => {
+              const score = i * 5;
+              const pct   = count / maxBucket;
+              const color = score < 40 ? "#fca5a5" : score < 70 ? "#fcd34d" : "#86efac";
+              return (
+                <div
+                  key={i}
+                  className="flex-1 rounded-t-sm transition-all duration-200"
+                  style={{
+                    height: `${Math.round(pct * 100)}%`,
+                    backgroundColor: color,
+                    minHeight: count > 0 ? 2 : 0,
+                  }}
+                  title={`${score}–${score + 4}: ${((count / display.n) * 100).toFixed(1)}%`}
+                />
+              );
+            })}
+          </div>
+          <div className="flex mt-2 h-1 rounded-full overflow-hidden gap-px">
+            <div className="rounded-l-full" style={{ width: "40%", backgroundColor: "#fca5a5" }} />
+            <div style={{ width: "30%", backgroundColor: "#fcd34d" }} />
+            <div className="rounded-r-full" style={{ width: "30%", backgroundColor: "#86efac" }} />
+          </div>
+          <div className="flex justify-between text-[9px] text-slate-400 mt-1 px-0.5">
+            <span>0</span><span>25</span><span>50</span><span>75</span><span>100</span>
+          </div>
+        </div>
+      )}
+
+      {/* ── Risk factors ── */}
+      <div className="space-y-2 mb-6">
+        <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-3">
+          Risk factors driving simulation
+        </p>
+        {factors.map((f) => (
+          <div
+            key={f.label}
+            className="flex items-center gap-3 px-3 py-2.5 rounded-xl border"
+            style={{ borderColor: STATUS_COLOR[f.status] + "30", backgroundColor: STATUS_BG[f.status] }}
+          >
+            <span
+              className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0"
+              style={{ backgroundColor: STATUS_COLOR[f.status] + "20", color: STATUS_COLOR[f.status] }}
+            >
+              {STATUS_ICON[f.status]}
+            </span>
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">{f.label}</p>
+              <p className="text-xs text-slate-700 truncate">{f.text}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* ── AI refinement ── */}
+      {!running && result && result.mean < 70 && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 space-y-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-bold text-amber-800">Source Refinement</p>
+              <p className="text-[11px] text-amber-700 mt-0.5 leading-relaxed">
+                Score below threshold — Claude can identify weak citations and suggest stronger sources.
+              </p>
+            </div>
+            {!advice && (
+              <button
+                onClick={getAdvice}
+                disabled={adviceLoading || usingDemo}
+                className="shrink-0 px-4 py-2 rounded-lg text-xs font-bold transition-all disabled:opacity-40"
+                style={{ backgroundColor: "#92400e", color: "#fff" }}
+              >
+                {adviceLoading ? "Analysing…" : "Get Suggestions"}
+              </button>
+            )}
+          </div>
+
+          {usingDemo && (
+            <p className="text-[10px] text-amber-600 italic">Run a real audit to get AI refinement suggestions.</p>
+          )}
+
+          {advice && (
+            <div className="space-y-4">
+              <p className="text-xs text-amber-900 leading-relaxed">{advice.summary}</p>
+              {advice.flagged_areas.map((area, i) => (
+                <div key={i} className="bg-white rounded-xl border border-amber-100 p-4 space-y-2">
+                  <blockquote className="text-[10px] text-slate-400 italic border-l-2 border-amber-200 pl-2 line-clamp-2">
+                    &ldquo;{area.claim_snippet}&rdquo;
+                  </blockquote>
+                  <p className="text-xs font-semibold text-red-600">⚠ {area.issue}</p>
+                  <p className="text-[11px] text-slate-600 leading-relaxed">{area.suggestion}</p>
+                  {area.recommended_sources.length > 0 && (
+                    <ul className="space-y-1">
+                      {area.recommended_sources.map((src, j) => (
+                        <li key={j} className="text-[10px] text-slate-500 flex items-start gap-1.5">
+                          <span className="text-amber-500 shrink-0 mt-0.5">→</span>
+                          {src}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ))}
+              {advice.overall_recommendation && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+                  <p className="text-[10px] font-semibold text-amber-700 uppercase tracking-widest mb-1">Recommendation</p>
+                  <p className="text-xs text-amber-900 leading-relaxed">{advice.overall_recommendation}</p>
+                </div>
+              )}
+              <button
+                onClick={() => setAdvice(null)}
+                className="text-[10px] text-amber-600 hover:text-amber-800 uppercase tracking-widest"
+              >
+                ✕ Dismiss
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Empty loading state */}
       {!display && !running && (
-        <div className="h-48 flex flex-col items-center justify-center text-center opacity-25 space-y-3">
-          <div className="text-4xl text-blue-400">◎</div>
-          <p className="text-[10px] text-zinc-500 uppercase tracking-widest">
-            Click Run to simulate 2,000 audit outcomes
-          </p>
-          <p className="text-[9px] text-zinc-700">
-            {usingDemo ? "Using Jack & Jill demo data" : `${claimResults.length} real claim results loaded`}
-          </p>
+        <div className="h-40 flex flex-col items-center justify-center text-center text-slate-300 space-y-3">
+          <div className="text-4xl">◎</div>
+          <p className="text-xs">Loading simulation…</p>
         </div>
       )}
     </div>

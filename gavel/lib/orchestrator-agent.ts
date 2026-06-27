@@ -1,6 +1,5 @@
-// GAVEL Orchestrator — Claude Opus as pure agentic brain
-// Singleton ToolLoopAgent used with createAgentUIStreamResponse for streaming UI.
-// Opus decides what to call, when, and why — no fixed workflow.
+// GAVEL Orchestrator — parallel-agent legal audit
+// Uses Sonnet for fast orchestration; calls all 5 specialist agents simultaneously per claim.
 
 import { anthropic } from "@ai-sdk/anthropic";
 import { ToolLoopAgent, tool, isStepCount } from "ai";
@@ -23,49 +22,33 @@ import {
 } from "./schemas";
 
 export const gravelOrchestrator = new ToolLoopAgent({
-  model: anthropic("claude-opus-4-8"),
-  providerOptions: {
-    anthropic: {
-      thinking: { type: "adaptive" },
-      output_config: { effort: "high" },
-    },
-  },
-  instructions: `You are GAVEL's orchestrator — the intelligent brain coordinating a legal AI reasoning audit.
+  model: anthropic("claude-sonnet-4-6"),
+  instructions: `You are GAVEL's orchestrator — an AI legal citation auditor.
 
-You have specialist sub-agents as tools. You decide what to call, when, and in what order — based on your judgment about each claim.
+SPEED IS CRITICAL. You must audit claims as fast as possible. Follow this exact workflow:
 
-YOUR TOOLS:
-- extractClaims: parse the document into structured legal claims (ALWAYS call this first)
-- runSourcer: verify a citation against EU Cellar primary source text
-- runJurisdictionist: check if the regulation actually applies to the entity — CRITICAL for UK firms post-Brexit
-- runHistorian: check if the cited regulation is current law and if article numbers are correct
-- runDevilsAdvocate: find real counter-authorities via Bailii case law search and web scraping
-- runFirmMemory: check for contradictions with the firm's past legal positions
-- deepResearch: ScraperAgent — searches Bailii, scrapes EBA docs, scrapes specific URLs. Use when you want REAL case law
-- reportClaim: commit your completed audit for one claim — MUST call for every claim you analyse
+STEP 1: Call extractClaims once to get the list of claims (already capped to the 8 most important).
 
-HOW TO REASON:
-1. Call extractClaims first
-2. For each claim, think about what the highest-value checks are:
-   - UK entity + EU regulation → runJurisdictionist FIRST (could be fatal WRONG_JURISDICTION)
-   - Specific article cited → runSourcer to get verbatim text
-   - Known CELEX → runHistorian (DORA article numbers changed between draft and final OJ)
-   - Substantive legal argument → runDevilsAdvocate
-   - Case name mentioned → deepResearch to find it on Bailii
-   - Always → runFirmMemory
-3. Call deepResearch proactively if the claim needs real precedent backing, not just your training knowledge
-4. Once you have enough evidence, call reportClaim — it commits the structured result and computes the score
-5. After all claims, write a brief summary of your most important findings
+STEP 2: For EVERY claim, call ALL FIVE agents in a single step — put all five tool calls in one response:
+  - runSourcer
+  - runJurisdictionist
+  - runHistorian
+  - runDevilsAdvocate
+  - runFirmMemory
+DO NOT call them one at a time. Call ALL FIVE simultaneously for each claim.
 
-JUDGMENT NOTES:
-- WRONG_JURISDICTION is a fatal finding — flag it prominently in your summary
-- NOT_FOUND from Sourcer means the claim has no evidentiary basis
-- Use deepResearch aggressively — real Bailii case law is more credible than your training knowledge
-- Don't skip agents mechanically; think about what each claim actually needs`,
+STEP 3: Once you have all five results for a claim, call reportClaim immediately.
+
+STEP 4: Repeat Steps 2-3 for the next claim (you can also batch multiple claims together).
+
+RULES:
+- Never call just one or two agents and wait — always batch all five at once
+- Skip deepResearch unless a claim explicitly names a court case (saves time)
+- After all reportClaim calls, write a one-sentence summary of the most critical finding`,
 
   tools: {
     extractClaims: tool({
-      description: "Parse the document into structured legal claims. Always call first.",
+      description: "Parse the document into structured legal claims (capped at 8 most important). Always call first.",
       inputSchema: z.object({ documentText: z.string() }),
       execute: async ({ documentText }) => {
         const claims = await extractClaims(documentText);
@@ -75,14 +58,14 @@ JUDGMENT NOTES:
 
     runSourcer: tool({
       description:
-        "Fetch verbatim article text from EU Cellar and compare against the AI claim. Returns CITED / INFERRED / NOT_FOUND.",
+        "Fetch verbatim article text from EU Cellar and compare against the claim. Returns CITED / INFERRED / NOT_FOUND.",
       inputSchema: z.object({ claim: ClaimSchema }),
       execute: async ({ claim }) => runSourcer(claim),
     }),
 
     runJurisdictionist: tool({
       description:
-        "Check if the regulation applies to the entity — fetches scope article from EU Cellar. Returns APPLICABLE / WRONG_JURISDICTION / UNCLEAR. Critical for UK firms.",
+        "Check if the regulation applies to the entity — CRITICAL for UK firms post-Brexit. Returns APPLICABLE / WRONG_JURISDICTION / UNCLEAR.",
       inputSchema: z.object({ claim: ClaimSchema, entityDescription: z.string() }),
       execute: async ({ claim, entityDescription }) =>
         runJurisdictionist(claim, entityDescription),
@@ -90,22 +73,22 @@ JUDGMENT NOTES:
 
     runHistorian: tool({
       description:
-        "Query EU Cellar SPARQL for amendment history. Catches outdated article numbers — DORA final OJ differs from drafts.",
+        "Check amendment history — catches outdated article numbers. Returns CURRENT / AMENDED / UNKNOWN.",
       inputSchema: z.object({ claim: ClaimSchema }),
       execute: async ({ claim }) => runHistorian(claim),
     }),
 
     runDevilsAdvocate: tool({
       description:
-        "Find real counter-authorities via Bailii + web search. Returns counter_authority, why_it_undermines, strength.",
+        "Find counter-authorities. Returns counter_authority, why_it_undermines, strength (high/medium/low).",
       inputSchema: z.object({ claim: ClaimSchema }),
       execute: async ({ claim }) => {
-        const timeout = AbortSignal.timeout(25_000);
+        const timeout = AbortSignal.timeout(20_000);
         return Promise.race([
           runDevilsAdvocate(claim),
           new Promise<{ counter_authority: string; why_it_undermines: string; strength: "low" }>(
             (resolve) => timeout.addEventListener("abort", () =>
-              resolve({ counter_authority: "Timeout", why_it_undermines: "Devil's Advocate timed out after 25s — Bailii/Firecrawl too slow.", strength: "low" })
+              resolve({ counter_authority: "Timeout", why_it_undermines: "Devil's Advocate timed out — Bailii unavailable.", strength: "low" })
             )
           ),
         ]);
@@ -114,26 +97,24 @@ JUDGMENT NOTES:
 
     runFirmMemory: tool({
       description:
-        "Check for contradictions with the firm's past legal positions. Returns any conflict with matter reference.",
+        "Check for contradictions with the firm's past legal positions. Returns CONTRADICTION_FOUND / NO_CONFLICT.",
       inputSchema: z.object({ claim: ClaimSchema }),
       execute: ({ claim }) => Promise.resolve(runFirmMemory(claim)),
     }),
 
     deepResearch: tool({
       description:
-        "ScraperAgent: searches Bailii for case law, scrapes EBA/ECB documents, scrapes any URL via Firecrawl. Use for real precedents.",
+        "Use ONLY when a claim names a specific court case. Searches Bailii for real precedents.",
       inputSchema: z.object({
-        task: z.string().describe(
-          "Specific research task e.g. 'Find UK cases on DORA territorial scope' or 'Scrape EBA/GL/2019/02'"
-        ),
+        task: z.string().describe("Specific research task, e.g. 'Find Lloyds v HMRC on jurisdiction'"),
       }),
       execute: async ({ task }) => {
-        const timeout = AbortSignal.timeout(30_000);
+        const timeout = AbortSignal.timeout(25_000);
         return Promise.race([
           runScraper(task),
           new Promise<string>((resolve) =>
             timeout.addEventListener("abort", () =>
-              resolve("Deep research timed out after 30s — Firecrawl unavailable or too slow.")
+              resolve("Deep research timed out after 25s.")
             )
           ),
         ]);
@@ -142,7 +123,7 @@ JUDGMENT NOTES:
 
     reportClaim: tool({
       description:
-        "Commit the completed audit for one claim. Computes the GAVEL score. MUST call once per claim after gathering evidence.",
+        "Commit the completed audit for one claim. Computes GAVEL score. MUST call once per claim after gathering all five agent results.",
       inputSchema: z.object({
         claim: ClaimSchema,
         sourcer: SourcerResultSchema,
@@ -151,7 +132,7 @@ JUDGMENT NOTES:
         devils_advocate: DevilsAdvocateResultSchema,
         firm_memory: FirmMemoryResultSchema,
         orchestrator_reasoning: z.string().describe(
-          "Your 1-2 sentence reasoning: what you found notable, which agents you prioritised and why"
+          "One sentence: your key finding for this claim."
         ),
       }),
       execute: async ({
@@ -163,5 +144,5 @@ JUDGMENT NOTES:
     }),
   },
 
-  stopWhen: isStepCount(50),
+  stopWhen: isStepCount(60),
 });
