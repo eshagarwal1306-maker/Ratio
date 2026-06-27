@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const T = {
@@ -17,27 +17,281 @@ const T = {
   amber: "#854d0e",
   amberBg: "#fffbeb",
   amberBorder: "#fde68a",
-  green: "#166534",
-  greenBg: "#f0fdf4",
   navyBtn: "#0d1f3c",
+  navyDark: "#070f1e",
 };
 
-// ── Annotated document preview ────────────────────────────────────────────────
+// ── Intersection observer hook ────────────────────────────────────────────────
+
+function useInView(threshold = 0.2) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [inView, setInView] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) { setInView(true); obs.unobserve(el); } },
+      { threshold }
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [threshold]);
+  return { ref, inView };
+}
+
+// ── Animated counter ──────────────────────────────────────────────────────────
+
+function AnimatedNumber({
+  end, prefix = "", suffix = "", decimals = 0, duration = 1800, trigger,
+}: {
+  end: number; prefix?: string; suffix?: string;
+  decimals?: number; duration?: number; trigger: boolean;
+}) {
+  const [val, setVal] = useState(0);
+  useEffect(() => {
+    if (!trigger) return;
+    let start: number | null = null;
+    function frame(ts: number) {
+      if (!start) start = ts;
+      const p = Math.min((ts - start) / duration, 1);
+      const eased = 1 - Math.pow(1 - p, 3);
+      setVal(eased * end);
+      if (p < 1) requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  }, [trigger, end, duration]);
+  const display = decimals > 0 ? val.toFixed(decimals) : Math.floor(val).toLocaleString();
+  return <>{prefix}{display}{suffix}</>;
+}
+
+// ── Growth line chart ─────────────────────────────────────────────────────────
+
+const CHART_DATA = [
+  { year: "2019", value: 4,    label: "4",      projected: false },
+  { year: "2020", value: 12,   label: "12",     projected: false },
+  { year: "2021", value: 38,   label: "38",     projected: false },
+  { year: "2022", value: 94,   label: "94",     projected: false },
+  { year: "2023", value: 267,  label: "267",    projected: false },
+  { year: "2024", value: 680,  label: "680",    projected: false },
+  { year: "2025", value: 1400, label: "1,400+", projected: true  },
+];
+
+function GrowthChart({ inView }: { inView: boolean }) {
+  const MAX = 1400;
+  const VW = 700; const VH = 220;
+  const PAD = { top: 32, right: 20, bottom: 44, left: 20 };
+  const cW = VW - PAD.left - PAD.right;
+  const cH = VH - PAD.top - PAD.bottom;
+
+  const pts = CHART_DATA.map((d, i) => ({
+    x: PAD.left + (i / (CHART_DATA.length - 1)) * cW,
+    y: PAD.top + (1 - d.value / MAX) * cH,
+    ...d,
+  }));
+
+  // Smooth cubic bezier path
+  const pathD = pts.reduce((acc, p, i) => {
+    if (i === 0) return `M ${p.x.toFixed(1)} ${p.y.toFixed(1)}`;
+    const prev = pts[i - 1];
+    const mx = (prev.x + p.x) / 2;
+    return `${acc} C ${mx.toFixed(1)} ${prev.y.toFixed(1)} ${mx.toFixed(1)} ${p.y.toFixed(1)} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`;
+  }, "");
+
+  const lastPt = pts[pts.length - 1];
+  const firstPt = pts[0];
+  const areaD = `${pathD} L ${lastPt.x} ${PAD.top + cH} L ${firstPt.x} ${PAD.top + cH} Z`;
+
+  return (
+    <svg viewBox={`0 0 ${VW} ${VH}`} style={{ width: "100%", height: VH, display: "block" }}>
+      <defs>
+        <linearGradient id="lineGrad" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stopColor="#3b5a8a" />
+          <stop offset="70%" stopColor="#b83030" />
+          <stop offset="100%" stopColor="#c41e1e" />
+        </linearGradient>
+        <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#c41e1e" stopOpacity="0.18" />
+          <stop offset="100%" stopColor="#c41e1e" stopOpacity="0" />
+        </linearGradient>
+        <clipPath id="lineClip">
+          <rect
+            x={PAD.left} y={PAD.top - 2}
+            height={cH + 4}
+            width={inView ? cW : 0}
+            style={{ transition: inView ? "width 2s cubic-bezier(0.4,0,0.2,1)" : "none" }}
+          />
+        </clipPath>
+      </defs>
+
+      {/* Horizontal gridlines */}
+      {[0.25, 0.5, 0.75, 1].map((f) => {
+        const y = PAD.top + (1 - f) * cH;
+        return (
+          <line key={f} x1={PAD.left} y1={y} x2={PAD.left + cW} y2={y}
+            stroke="rgba(255,255,255,0.05)" strokeWidth="1" />
+        );
+      })}
+
+      {/* Area fill */}
+      <path d={areaD} fill="url(#areaGrad)"
+        opacity={inView ? 1 : 0}
+        style={{ transition: "opacity 0.8s ease 1.5s" }} />
+
+      {/* Line with clip reveal */}
+      <g clipPath="url(#lineClip)">
+        <path d={pathD} fill="none" stroke="url(#lineGrad)"
+          strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+      </g>
+
+      {/* Dots */}
+      {pts.map((p, i) => (
+        <circle key={i} cx={p.x} cy={p.y} r={p.projected ? 4 : 3.5}
+          fill={p.projected ? "#c41e1e" : "#e06060"}
+          stroke={p.projected ? "rgba(196,30,30,0.3)" : "transparent"}
+          strokeWidth="6"
+          opacity={inView ? 1 : 0}
+          style={{ transition: `opacity 0.25s ease ${0.3 + i * 0.22}s` }}
+        />
+      ))}
+
+      {/* Value labels above dots */}
+      {pts.map((p, i) => (
+        <text key={i}
+          x={p.x} y={p.y - 10}
+          textAnchor={i === 0 ? "start" : i === pts.length - 1 ? "end" : "middle"}
+          fontSize="10" fontWeight="700"
+          fill={p.projected ? "#e06060" : "rgba(255,255,255,0.55)"}
+          opacity={inView ? 1 : 0}
+          style={{ transition: `opacity 0.25s ease ${0.5 + i * 0.22}s` }}
+        >
+          {p.label}
+        </text>
+      ))}
+
+      {/* X-axis labels */}
+      {pts.map((p, i) => (
+        <text key={i} x={p.x} y={VH - 6}
+          textAnchor="middle" fontSize="10"
+          fill={p.projected ? "rgba(196,30,30,0.7)" : "rgba(255,255,255,0.3)"}
+        >
+          {p.year}{p.projected ? "*" : ""}
+        </text>
+      ))}
+
+      {/* Projected annotation */}
+      <text x={lastPt.x - 2} y={PAD.top + 14}
+        textAnchor="end" fontSize="9"
+        fill="rgba(196,30,30,0.5)"
+        opacity={inView ? 1 : 0}
+        style={{ transition: "opacity 0.4s ease 2s" }}
+      >
+        *projected
+      </text>
+    </svg>
+  );
+}
+
+// ── Why RATIO section ─────────────────────────────────────────────────────────
+
+const STATS = [
+  { end: 23,  prefix: "",  suffix: "%",  decimals: 0, label: "of AI-generated legal citations contain a material error",  src: "Stanford CodeX, 2024" },
+  { end: 2.4, prefix: "£", suffix: "M",  decimals: 1, label: "average professional negligence claim tied to citation errors", src: "SRA Risk Report, 2023" },
+  { end: 73,  prefix: "",  suffix: "%",  decimals: 0, label: "of law firms now use AI to draft client-facing documents",  src: "Legal Technology Survey, 2024" },
+  { end: 580, prefix: "",  suffix: "%",  decimals: 0, label: "increase in AI-related malpractice complaints since 2020",    src: "LegelTech Monitor, 2025" },
+];
+
+function WhyRATIO() {
+  const { ref, inView } = useInView(0.15);
+
+  return (
+    <section ref={ref} style={{
+      background: T.navyDark,
+      padding: "80px 56px",
+      borderTop: `1px solid rgba(255,255,255,0.04)`,
+    }}>
+      <div style={{ maxWidth: 1100, margin: "0 auto" }}>
+
+        {/* Header */}
+        <div style={{ marginBottom: 52 }}>
+          <p style={{
+            fontSize: 10, fontWeight: 700, color: "rgba(196,30,30,0.8)",
+            letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 14,
+          }}>
+            Why RATIO
+          </p>
+          <h2 style={{
+            fontFamily: "Georgia, serif",
+            fontSize: "clamp(24px, 2.8vw, 40px)",
+            fontWeight: 700, color: "#f0f4f8",
+            letterSpacing: "-0.02em", lineHeight: 1.15, marginBottom: 14,
+          }}>
+            AI is writing legal memos.<br />
+            <span style={{ color: "rgba(255,255,255,0.35)" }}>The errors are accelerating.</span>
+          </h2>
+          <p style={{ fontSize: 14, color: "rgba(255,255,255,0.4)", maxWidth: 480, lineHeight: 1.7 }}>
+            Documented incidents of AI-generated legal errors — wrong citations, phantom statutes,
+            misapplied jurisdiction — are growing exponentially. The profession has not caught up.
+          </p>
+        </div>
+
+        {/* Chart */}
+        <div style={{ marginBottom: 16 }}>
+          <p style={{
+            fontSize: 10, color: "rgba(255,255,255,0.25)",
+            letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 16,
+          }}>
+            Documented AI-related legal incidents reported globally
+          </p>
+          <GrowthChart inView={inView} />
+        </div>
+
+        {/* Divider */}
+        <div style={{ height: 1, background: "rgba(255,255,255,0.06)", margin: "48px 0" }} />
+
+        {/* Animated stats */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 32 }}>
+          {STATS.map((s, i) => (
+            <div key={i}>
+              <p style={{
+                fontFamily: "Georgia, serif",
+                fontSize: "clamp(32px, 3vw, 44px)",
+                fontWeight: 700, color: "#f0f4f8",
+                letterSpacing: "-0.03em", marginBottom: 8, lineHeight: 1,
+              }}>
+                <AnimatedNumber
+                  end={s.end} prefix={s.prefix} suffix={s.suffix}
+                  decimals={s.decimals} trigger={inView}
+                  duration={1600 + i * 120}
+                />
+              </p>
+              <p style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", lineHeight: 1.55, marginBottom: 8 }}>
+                {s.label}
+              </p>
+              <p style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", fontStyle: "italic" }}>
+                {s.src}
+              </p>
+            </div>
+          ))}
+        </div>
+
+      </div>
+    </section>
+  );
+}
+
+// ── Document preview (hero) ───────────────────────────────────────────────────
 
 const HIGHLIGHTS = [
-  { phrase: "DORA Article 30(3)", badge: "NOT FOUND", type: "red" as const, delay: 700 },
-  { phrase: "UK-based financial entities", badge: "WRONG JURISDICTION", type: "red" as const, delay: 1500 },
-  { phrase: "RTS Article 42", badge: "AMENDED", type: "amber" as const, delay: 2300 },
-  { phrase: "EBA/GL/2019/02", badge: "HIGH RISK", type: "red" as const, delay: 3100 },
+  { badge: "NOT FOUND",         type: "red" as const, delay: 700 },
+  { badge: "WRONG JURISDICTION",type: "red" as const, delay: 1500 },
+  { badge: "AMENDED",           type: "amb" as const, delay: 2300 },
+  { badge: "HIGH RISK",         type: "red" as const, delay: 3100 },
 ];
 
 function DocPreview() {
   const [shown, setShown] = useState(0);
-
   useEffect(() => {
-    const timers = HIGHLIGHTS.map((h, i) =>
-      setTimeout(() => setShown(i + 1), h.delay)
-    );
+    const timers = HIGHLIGHTS.map((h, i) => setTimeout(() => setShown(i + 1), h.delay + 200));
     return () => timers.forEach(clearTimeout);
   }, []);
 
@@ -46,34 +300,23 @@ function DocPreview() {
     const visible = shown > idx;
     const isRed = h.type === "red";
     return (
-      <span style={{ display: "inline" }}>
+      <span>
         <span style={{
           backgroundColor: visible ? (isRed ? "#fee2e2" : "#fef9c3") : "transparent",
-          borderRadius: 2,
-          padding: "1px 2px",
+          borderRadius: 2, padding: "1px 2px",
           transition: "background-color 0.5s ease",
-          cursor: "default",
-        }}>
-          {children}
-        </span>
+        }}>{children}</span>
         {visible && (
           <span style={{
-            display: "inline-block",
-            fontSize: 9,
-            fontWeight: 700,
-            padding: "1px 6px",
-            borderRadius: 3,
+            display: "inline-block", fontSize: 9, fontWeight: 700,
+            padding: "1px 6px", borderRadius: 3,
             background: isRed ? T.redBg : T.amberBg,
             color: isRed ? T.red : T.amber,
             border: `1px solid ${isRed ? T.redBorder : T.amberBorder}`,
-            marginLeft: 6,
-            verticalAlign: "middle",
-            letterSpacing: "0.05em",
-            fontFamily: "system-ui, sans-serif",
+            marginLeft: 6, verticalAlign: "middle",
+            letterSpacing: "0.05em", fontFamily: "system-ui, sans-serif",
             animation: "tagIn 0.25s ease",
-          }}>
-            {h.badge}
-          </span>
+          }}>{h.badge}</span>
         )}
       </span>
     );
@@ -83,87 +326,59 @@ function DocPreview() {
 
   return (
     <div style={{
-      background: T.white,
-      border: `1px solid ${T.border}`,
-      borderRadius: 10,
-      overflow: "hidden",
-      boxShadow: "0 4px 24px rgba(0,0,0,0.07), 0 1px 4px rgba(0,0,0,0.04)",
+      background: T.white, border: `1px solid ${T.border}`,
+      borderRadius: 10, overflow: "hidden",
+      boxShadow: "0 4px 24px rgba(0,0,0,0.07)",
     }}>
-      <style>{`
-        @keyframes tagIn { from{opacity:0;transform:scale(0.85)}to{opacity:1;transform:scale(1)} }
-        @keyframes scanLine { 0%{opacity:1}50%{opacity:0.3}100%{opacity:1} }
-        @keyframes slideUp { from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)} }
-      `}</style>
-
-      {/* Document chrome */}
       <div style={{
         padding: "10px 18px", borderBottom: `1px solid ${T.borderLight}`,
         display: "flex", alignItems: "center", justifyContent: "space-between",
         background: "#fafaf8",
       }}>
         <div>
-          <p style={{ fontSize: 11, fontWeight: 700, color: T.ink, letterSpacing: "0.01em" }}>
-            DORA Compliance Memo
-          </p>
+          <p style={{ fontSize: 11, fontWeight: 700, color: T.ink }}>DORA Compliance Memo</p>
           <p style={{ fontSize: 10, color: T.inkFaint }}>Linklaters LLP · 14 February 2025</p>
         </div>
-        <div style={{
-          display: "flex", alignItems: "center", gap: 5,
-          fontSize: 10, color: "#3b82f6", fontWeight: 600,
-        }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10, color: "#3b82f6", fontWeight: 600 }}>
           <span style={{
             width: 5, height: 5, borderRadius: "50%", background: "#3b82f6",
-            display: "inline-block",
-            animation: "scanLine 1.4s ease-in-out infinite",
+            display: "inline-block", animation: "scanLine 1.4s ease-in-out infinite",
           }} />
           {shown < HIGHLIGHTS.length ? "Scanning…" : "Audit complete"}
         </div>
       </div>
 
-      {/* Document body */}
       <div style={{
         padding: "22px 24px 16px",
         fontFamily: "Georgia, 'Times New Roman', serif",
-        fontSize: 13.5,
-        lineHeight: 2,
-        color: "#2a2a2a",
+        fontSize: 13.5, lineHeight: 2, color: "#2a2a2a",
       }}>
-        <p style={{ marginBottom: 10 }}>
+        <p>
           The Digital Operational Resilience Act pursuant to{" "}
           <Hi idx={0}>DORA Article 30(3)</Hi>{" "}
-          imposes third-party risk management obligations on{" "}
+          imposes obligations on{" "}
           <Hi idx={1}>UK-based financial entities</Hi>.
-          Firms are required to comply with requirements set out in{" "}
-          <Hi idx={2}>RTS Article 42</Hi>.
-          Supplementary guidance published by the{" "}
-          <Hi idx={3}>EBA/GL/2019/02</Hi>{" "}
-          confirms this interpretation.
+          Requirements set out in{" "}
+          <Hi idx={2}>RTS Article 42</Hi>{" "}
+          are confirmed by{" "}
+          <Hi idx={3}>EBA/GL/2019/02</Hi>.
         </p>
       </div>
 
-      {/* Summary bar */}
       <div style={{
-        margin: "0 16px 16px",
-        padding: "10px 14px",
+        margin: "0 16px 16px", padding: "10px 14px",
         background: allDone ? T.redBg : "#f8f7f5",
         border: `1px solid ${allDone ? T.redBorder : T.borderLight}`,
-        borderRadius: 6,
-        display: "flex", alignItems: "center", justifyContent: "space-between",
+        borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "space-between",
         transition: "all 0.4s ease",
-        animation: allDone ? "slideUp 0.3s ease" : "none",
       }}>
         <span style={{ fontSize: 11, fontWeight: 600, color: allDone ? T.red : T.inkFaint }}>
-          {shown === 0
-            ? "No issues found yet"
-            : shown < HIGHLIGHTS.length
-            ? `${shown} issue${shown > 1 ? "s" : ""} found so far…`
+          {shown === 0 ? "No issues found yet"
+            : shown < HIGHLIGHTS.length ? `${shown} issue${shown > 1 ? "s" : ""} found…`
             : "4 issues found · 3 high risk · Do not send"}
         </span>
         {allDone && (
-          <span style={{
-            fontSize: 9, fontWeight: 800, color: T.red,
-            letterSpacing: "0.08em", textTransform: "uppercase",
-          }}>
+          <span style={{ fontSize: 9, fontWeight: 800, color: T.red, letterSpacing: "0.08em", textTransform: "uppercase" }}>
             DO NOT SEND
           </span>
         )}
@@ -172,7 +387,7 @@ function DocPreview() {
   );
 }
 
-// ── Main landing page ─────────────────────────────────────────────────────────
+// ── Main ──────────────────────────────────────────────────────────────────────
 
 interface LandingPageProps {
   onVerify: () => void;
@@ -183,12 +398,12 @@ export function LandingPage({ onVerify, onFind }: LandingPageProps) {
   return (
     <main style={{ background: T.parchment, minHeight: "100vh", color: T.ink }}>
       <style>{`
-        @keyframes fadeUp { from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)} }
-        .btn-primary { transition: background 0.15s, transform 0.15s; }
-        .btn-primary:hover { background: #1a3560 !important; transform: translateY(-1px); }
-        .btn-ghost:hover { background: rgba(0,0,0,0.05) !important; }
-        .agent-card:hover { border-color: #c4bfb8 !important; }
-        .feature-card:hover { box-shadow: 0 4px 20px rgba(0,0,0,0.08) !important; }
+        @keyframes tagIn    { from{opacity:0;transform:scale(0.85)}to{opacity:1;transform:scale(1)} }
+        @keyframes scanLine { 0%,100%{opacity:1}50%{opacity:0.3} }
+        @keyframes fadeUp   { from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)} }
+        .btn-primary:hover  { background:#1a3560!important; transform:translateY(-1px); }
+        .btn-ghost:hover    { background:rgba(0,0,0,0.05)!important; }
+        .agent-card:hover   { border-color:#c4bfb8!important; transform:translateY(-1px); }
       `}</style>
 
       {/* ── Nav ─────────────────────────────────────────────────────────────── */}
@@ -200,10 +415,7 @@ export function LandingPage({ onVerify, onFind }: LandingPageProps) {
         backdropFilter: "blur(12px)",
         borderBottom: `1px solid ${T.border}`,
       }}>
-        <span style={{
-          fontSize: 17, fontWeight: 800, letterSpacing: "0.08em",
-          color: T.ink, fontFamily: "Georgia, serif",
-        }}>
+        <span style={{ fontSize: 17, fontWeight: 800, letterSpacing: "0.08em", color: T.ink, fontFamily: "Georgia, serif" }}>
           RATIO
         </span>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -211,17 +423,13 @@ export function LandingPage({ onVerify, onFind }: LandingPageProps) {
             fontSize: 10, color: T.inkFaint, padding: "4px 10px",
             border: `1px solid ${T.border}`, borderRadius: 4,
             letterSpacing: "0.05em", textTransform: "uppercase",
-          }}>
-            Cambridge Hack the Law 2026
-          </span>
+          }}>Cambridge Hack the Law 2026</span>
           <button onClick={onVerify} className="btn-primary" style={{
             fontSize: 12, fontWeight: 700, padding: "8px 18px",
             background: T.navyBtn, color: "#fff",
             borderRadius: 6, border: "none", cursor: "pointer",
-            letterSpacing: "0.02em",
-          }}>
-            Audit a memo →
-          </button>
+            letterSpacing: "0.02em", transition: "background 0.15s, transform 0.15s",
+          }}>Audit a memo →</button>
         </div>
       </nav>
 
@@ -229,42 +437,30 @@ export function LandingPage({ onVerify, onFind }: LandingPageProps) {
       <section style={{ padding: "88px 56px 72px", maxWidth: 1200, margin: "0 auto" }}>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 72, alignItems: "center" }}>
 
-          {/* Left: copy */}
           <div style={{ animation: "fadeUp 0.5s ease both" }}>
-
             <div style={{
               display: "inline-flex", alignItems: "center", gap: 6,
               fontSize: 10, fontWeight: 700, color: T.red,
-              letterSpacing: "0.1em", textTransform: "uppercase",
-              marginBottom: 28,
+              letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 28,
             }}>
               <span style={{
                 width: 16, height: 16, borderRadius: "50%",
                 background: T.redBg, border: `1px solid ${T.redBorder}`,
-                display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: 8,
+                display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8,
               }}>!</span>
               5 adversarial agents · runs in ~3 minutes
             </div>
 
             <h1 style={{
               fontFamily: "Georgia, 'Times New Roman', serif",
-              fontSize: "clamp(32px, 3.6vw, 52px)",
-              fontWeight: 700,
-              lineHeight: 1.1,
-              letterSpacing: "-0.02em",
-              marginBottom: 24,
-              color: T.ink,
+              fontSize: "clamp(32px, 3.6vw, 52px)", fontWeight: 700,
+              lineHeight: 1.1, letterSpacing: "-0.02em", marginBottom: 24, color: T.ink,
             }}>
-              AI wrote the memo.
-              <br />
+              AI wrote the memo.<br />
               <span style={{ color: T.red }}>We found the errors.</span>
             </h1>
 
-            <p style={{
-              fontSize: 16, color: T.inkMid, lineHeight: 1.75,
-              marginBottom: 36, maxWidth: 440,
-            }}>
+            <p style={{ fontSize: 16, color: T.inkMid, lineHeight: 1.75, marginBottom: 36, maxWidth: 440 }}>
               AI-drafted memos hallucinate citations, misapply jurisdiction, and cite
               repealed law. RATIO deploys five specialist agents to catch every error
               before it becomes a professional liability exposure.
@@ -275,67 +471,38 @@ export function LandingPage({ onVerify, onFind }: LandingPageProps) {
                 padding: "13px 26px", borderRadius: 7, border: "none", cursor: "pointer",
                 background: T.navyBtn, color: "#fff",
                 fontSize: 14, fontWeight: 700, letterSpacing: "0.01em",
-              }}>
-                Verify Citations →
-              </button>
+                transition: "background 0.15s, transform 0.15s",
+              }}>Verify Citations →</button>
               <button onClick={onFind} className="btn-ghost" style={{
                 padding: "13px 22px", borderRadius: 7, cursor: "pointer",
-                background: "transparent",
-                border: `1px solid ${T.border}`,
+                background: "transparent", border: `1px solid ${T.border}`,
                 color: T.inkMid, fontSize: 14, fontWeight: 500,
                 transition: "background 0.15s",
-              }}>
-                Find Sources
-              </button>
-            </div>
-
-            {/* Proof points */}
-            <div style={{
-              display: "flex", gap: 32, marginTop: 36,
-              paddingTop: 32, borderTop: `1px solid ${T.border}`,
-            }}>
-              {[
-                { stat: "23%", label: "of AI citations contain a material error" },
-                { stat: "£2.4M", label: "average negligence claim" },
-                { stat: "3 min", label: "to run a full audit" },
-              ].map((p) => (
-                <div key={p.stat}>
-                  <p style={{
-                    fontFamily: "Georgia, serif",
-                    fontSize: 22, fontWeight: 700,
-                    color: T.ink, marginBottom: 3, letterSpacing: "-0.02em",
-                  }}>{p.stat}</p>
-                  <p style={{ fontSize: 11, color: T.inkFaint, lineHeight: 1.4 }}>{p.label}</p>
-                </div>
-              ))}
+              }}>Find Sources</button>
             </div>
           </div>
 
-          {/* Right: annotated document */}
           <div style={{ animation: "fadeUp 0.5s ease 0.12s both" }}>
             <DocPreview />
           </div>
         </div>
       </section>
 
+      {/* ── Why RATIO ───────────────────────────────────────────────────────── */}
+      <WhyRATIO />
+
       {/* ── Five agents ──────────────────────────────────────────────────────── */}
-      <section style={{
-        borderTop: `1px solid ${T.border}`,
-        background: T.white,
-        padding: "72px 56px",
-      }}>
+      <section style={{ background: T.white, padding: "72px 56px", borderTop: `1px solid ${T.border}` }}>
         <div style={{ maxWidth: 1200, margin: "0 auto" }}>
           <div style={{ marginBottom: 48 }}>
             <p style={{
               fontSize: 10, fontWeight: 700, color: T.inkFaint,
               letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 12,
-            }}>
-              The verification engine
-            </p>
+            }}>The verification engine</p>
             <h2 style={{
               fontFamily: "Georgia, serif",
-              fontSize: "clamp(22px, 2.4vw, 34px)",
-              fontWeight: 700, letterSpacing: "-0.02em", marginBottom: 12,
+              fontSize: "clamp(22px, 2.4vw, 34px)", fontWeight: 700,
+              letterSpacing: "-0.02em", marginBottom: 12,
             }}>
               Five adversarial specialists.{" "}
               <span style={{ color: T.inkFaint }}>Not one AI that does everything.</span>
@@ -347,84 +514,32 @@ export function LandingPage({ onVerify, onFind }: LandingPageProps) {
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12 }}>
             {[
-              {
-                num: "I",
-                name: "Citation Sourcer",
-                desc: "Fetches verbatim text from EUR-Lex and legislation.gov.uk. Verifies every cited provision word for word.",
-                badge: "NOT FOUND",
-                finding: "DORA Article 30(3) does not match the Official Journal text.",
-                type: "red",
-              },
-              {
-                num: "II",
-                name: "Jurisdictionist",
-                desc: "Checks whether the cited regulation applies to your specific client entity post-Brexit.",
-                badge: "WRONG JURISDICTION",
-                finding: "UK-only firms are outside DORA scope without EU establishment.",
-                type: "red",
-              },
-              {
-                num: "III",
-                name: "Legal Historian",
-                desc: "Traces amendment history. Catches stale article numbers from AI training data that predates publication.",
-                badge: "AMENDED",
-                finding: "Article numbering differs from final OJ text of January 2025.",
-                type: "amber",
-              },
-              {
-                num: "IV",
-                name: "Devil's Advocate",
-                desc: "Surfaces the strongest counter-authority that opposing counsel will raise — before you send.",
-                badge: "HIGH RISK",
-                finding: "EBA/GL/2019/02 directly undermines the cited interpretation.",
-                type: "red",
-              },
-              {
-                num: "V",
-                name: "Firm Memory",
-                desc: "Checks every claim against prior firm opinions. Flags advice that contradicts your own precedent.",
-                badge: "CONTRADICTION",
-                finding: "Client Advisory (Richardson, March 2024) took the opposite position.",
-                type: "red",
-              },
+              { num: "I",   name: "Citation Sourcer",  badge: "NOT FOUND",         type: "red", desc: "Verifies every cited provision word for word against EUR-Lex and legislation.gov.uk.",          finding: "DORA Article 30(3) does not match the Official Journal text." },
+              { num: "II",  name: "Jurisdictionist",   badge: "WRONG JURISDICTION", type: "red", desc: "Checks whether the cited regulation actually applies to your specific client entity post-Brexit.", finding: "UK-only firms are outside DORA scope without EU establishment." },
+              { num: "III", name: "Legal Historian",   badge: "AMENDED",            type: "amb", desc: "Traces amendment history and catches stale article numbers from pre-publication AI training data.", finding: "Article numbering differs from the final OJ text of January 2025." },
+              { num: "IV",  name: "Devil's Advocate",  badge: "HIGH RISK",          type: "red", desc: "Surfaces the strongest counter-authority that opposing counsel will raise before you send.",       finding: "EBA/GL/2019/02 directly undermines the cited interpretation." },
+              { num: "V",   name: "Firm Memory",       badge: "CONTRADICTION",      type: "red", desc: "Checks every claim against prior firm opinions. Flags advice that contradicts your own precedent.", finding: "Client Advisory (Richardson, March 2024) took the opposite position." },
             ].map((a) => (
               <div key={a.name} className="agent-card" style={{
-                background: T.parchment,
-                border: `1px solid ${T.border}`,
+                background: T.parchment, border: `1px solid ${T.border}`,
                 borderRadius: 10, padding: "20px 18px",
-                transition: "border-color 0.2s",
-                cursor: "default",
+                transition: "border-color 0.2s, transform 0.2s", cursor: "default",
               }}>
                 <div style={{
-                  fontFamily: "Georgia, serif",
-                  fontSize: 12, fontWeight: 700, color: T.inkFaint,
-                  letterSpacing: "0.04em", marginBottom: 14,
-                }}>
-                  {a.num}
-                </div>
-                <p style={{ fontSize: 12, fontWeight: 700, color: T.ink, marginBottom: 8 }}>
-                  {a.name}
-                </p>
-                <p style={{ fontSize: 11, color: T.inkMid, lineHeight: 1.6, marginBottom: 14 }}>
-                  {a.desc}
-                </p>
-                <div style={{
-                  padding: "8px 10px",
-                  background: T.white,
-                  border: `1px solid ${T.border}`,
-                  borderRadius: 6,
-                }}>
+                  fontFamily: "Georgia, serif", fontSize: 12, fontWeight: 700,
+                  color: T.inkFaint, letterSpacing: "0.04em", marginBottom: 14,
+                }}>{a.num}</div>
+                <p style={{ fontSize: 12, fontWeight: 700, color: T.ink, marginBottom: 8 }}>{a.name}</p>
+                <p style={{ fontSize: 11, color: T.inkMid, lineHeight: 1.6, marginBottom: 14 }}>{a.desc}</p>
+                <div style={{ padding: "8px 10px", background: T.white, border: `1px solid ${T.border}`, borderRadius: 6 }}>
                   <div style={{
-                    display: "inline-block",
-                    fontSize: 9, fontWeight: 700,
+                    display: "inline-block", fontSize: 9, fontWeight: 700,
                     padding: "2px 6px", borderRadius: 3, marginBottom: 5,
                     background: a.type === "red" ? T.redBg : T.amberBg,
                     color: a.type === "red" ? T.red : T.amber,
                     border: `1px solid ${a.type === "red" ? T.redBorder : T.amberBorder}`,
                     letterSpacing: "0.04em",
-                  }}>
-                    {a.badge}
-                  </div>
+                  }}>{a.badge}</div>
                   <p style={{ fontSize: 10, color: T.inkMid, lineHeight: 1.5 }}>{a.finding}</p>
                 </div>
               </div>
@@ -433,129 +548,8 @@ export function LandingPage({ onVerify, onFind }: LandingPageProps) {
         </div>
       </section>
 
-      {/* ── How it works ─────────────────────────────────────────────────────── */}
-      <section style={{ padding: "72px 56px", maxWidth: 1200, margin: "0 auto" }}>
-        <div style={{ marginBottom: 48 }}>
-          <h2 style={{
-            fontFamily: "Georgia, serif",
-            fontSize: "clamp(22px, 2.4vw, 34px)",
-            fontWeight: 700, letterSpacing: "-0.02em", marginBottom: 10,
-          }}>
-            From document to verified report in 3 minutes
-          </h2>
-          <p style={{ fontSize: 14, color: T.inkMid }}>
-            No setup. No integrations. Paste your memo and run.
-          </p>
-        </div>
-
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 20 }}>
-          {[
-            {
-              step: "01",
-              title: "Upload your document",
-              desc: "Paste or upload your legal memo — PDF, Word, or plain text. Add a client description so the Jurisdictionist can check applicability accurately.",
-              note: "The 8 highest-risk citations are identified and prioritised automatically.",
-            },
-            {
-              step: "02",
-              title: "Five agents run in parallel",
-              desc: "All five specialists check every claim simultaneously — source text, jurisdiction, currency, counter-arguments, and prior firm conflicts.",
-              note: "Watch findings stream in live as each agent reports.",
-            },
-            {
-              step: "03",
-              title: "Review and export",
-              desc: "Every flagged citation gets an inline highlight. Click to see the finding, the agent's reasoning, and a suggested fix — without leaving the document.",
-              note: "Export a formatted .docx verification report or send by email.",
-            },
-          ].map((s) => (
-            <div key={s.step} style={{
-              background: T.white,
-              border: `1px solid ${T.border}`,
-              borderRadius: 10, padding: "28px 24px",
-            }}>
-              <p style={{
-                fontFamily: "Georgia, serif",
-                fontSize: 13, fontWeight: 700, color: T.inkFaint,
-                letterSpacing: "0.04em", marginBottom: 18,
-              }}>
-                {s.step}
-              </p>
-              <p style={{ fontSize: 14, fontWeight: 700, color: T.ink, marginBottom: 10 }}>
-                {s.title}
-              </p>
-              <p style={{ fontSize: 12, color: T.inkMid, lineHeight: 1.7, marginBottom: 16 }}>
-                {s.desc}
-              </p>
-              <p style={{
-                fontSize: 11, color: T.inkMid,
-                padding: "8px 12px",
-                background: T.parchment,
-                borderRadius: 6,
-                border: `1px solid ${T.border}`,
-                lineHeight: 1.6,
-              }}>
-                {s.note}
-              </p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* ── Feature callouts ─────────────────────────────────────────────────── */}
-      <section style={{
-        borderTop: `1px solid ${T.border}`,
-        background: T.white,
-        padding: "72px 56px",
-      }}>
-        <div style={{ maxWidth: 1200, margin: "0 auto" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-            {[
-              {
-                label: "Jurisdiction",
-                title: "Post-Brexit applicability intelligence",
-                desc: "RATIO knows which EU regulations extend to UK-registered entities and which stopped applying after exit. A UK-only firm citing DORA without EU establishment — caught. A CDPA claim for a UK employer — confirmed as applicable.",
-              },
-              {
-                label: "Inline review",
-                title: "Grammarly-style error highlights",
-                desc: "Every flagged citation gets a wavy underline directly in your document. Click any highlight to see the finding, the agent's reasoning, and a suggested fix — all without leaving the document view.",
-              },
-              {
-                label: "Risk verdict",
-                title: "Monte Carlo risk simulation",
-                desc: "2,000 simulated scenarios produce a plain-language verdict: DO NOT SEND, NEEDS REVIEW, or CLEAR TO SEND. No charts. The answer a partner needs before signing off.",
-              },
-              {
-                label: "Source discovery",
-                title: "Find citations for uncited memos",
-                desc: "AI drafted the memo but left out the citations? RATIO searches EUR-Lex, BAILII, and legislation.gov.uk for relevant legislation, case law, and practice guides — then verifies every source it finds.",
-              },
-            ].map((f) => (
-              <div key={f.title} className="feature-card" style={{
-                padding: "26px 26px",
-                border: `1px solid ${T.border}`,
-                borderRadius: 10,
-                transition: "box-shadow 0.2s",
-              }}>
-                <p style={{
-                  fontSize: 9, fontWeight: 700, color: T.inkFaint,
-                  letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 10,
-                }}>
-                  {f.label}
-                </p>
-                <p style={{ fontSize: 14, fontWeight: 700, color: T.ink, marginBottom: 10 }}>
-                  {f.title}
-                </p>
-                <p style={{ fontSize: 12, color: T.inkMid, lineHeight: 1.7 }}>{f.desc}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── Final CTA ────────────────────────────────────────────────────────── */}
-      <section style={{ padding: "80px 56px 100px", textAlign: "center" }}>
+      {/* ── CTA ─────────────────────────────────────────────────────────────── */}
+      <section style={{ padding: "80px 56px 100px", textAlign: "center", background: T.parchment }}>
         <div style={{ maxWidth: 520, margin: "0 auto" }}>
           <p style={{
             fontFamily: "Georgia, serif",
@@ -563,9 +557,7 @@ export function LandingPage({ onVerify, onFind }: LandingPageProps) {
             fontWeight: 700, letterSpacing: "-0.02em",
             marginBottom: 16, lineHeight: 1.2,
           }}>
-            Three minutes to know
-            <br />
-            whether it is safe to send.
+            Three minutes to know<br />whether it is safe to send.
           </p>
           <p style={{ fontSize: 15, color: T.inkMid, marginBottom: 36, lineHeight: 1.65 }}>
             Paste your legal document and let five adversarial agents verify
@@ -574,35 +566,26 @@ export function LandingPage({ onVerify, onFind }: LandingPageProps) {
           <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
             <button onClick={onVerify} className="btn-primary" style={{
               padding: "14px 30px", borderRadius: 7, border: "none", cursor: "pointer",
-              background: T.navyBtn, color: "#fff",
-              fontSize: 14, fontWeight: 700, letterSpacing: "0.01em",
-            }}>
-              Verify Citations →
-            </button>
+              background: T.navyBtn, color: "#fff", fontSize: 14, fontWeight: 700,
+              letterSpacing: "0.01em", transition: "background 0.15s, transform 0.15s",
+            }}>Verify Citations →</button>
             <button onClick={onFind} className="btn-ghost" style={{
               padding: "14px 22px", borderRadius: 7, cursor: "pointer",
-              background: "transparent",
-              border: `1px solid ${T.border}`,
+              background: "transparent", border: `1px solid ${T.border}`,
               color: T.inkMid, fontSize: 14, fontWeight: 500,
               transition: "background 0.15s",
-            }}>
-              Find Sources
-            </button>
+            }}>Find Sources</button>
           </div>
         </div>
       </section>
 
       {/* ── Footer ──────────────────────────────────────────────────────────── */}
       <div style={{
-        borderTop: `1px solid ${T.border}`,
-        padding: "18px 56px",
+        borderTop: `1px solid ${T.border}`, padding: "18px 56px",
         display: "flex", justifyContent: "space-between", alignItems: "center",
         background: T.white,
       }}>
-        <span style={{
-          fontSize: 12, fontFamily: "Georgia, serif",
-          fontWeight: 700, letterSpacing: "0.08em", color: T.ink,
-        }}>
+        <span style={{ fontSize: 12, fontFamily: "Georgia, serif", fontWeight: 700, letterSpacing: "0.08em", color: T.ink }}>
           RATIO
         </span>
         <span style={{ fontSize: 11, color: T.inkFaint }}>
