@@ -2,6 +2,7 @@
 
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, lastAssistantMessageIsCompleteWithToolCalls } from "ai";
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { Neo4jGraph } from "./Neo4jGraph";
 import { AgentRoster } from "./AgentRoster";
@@ -427,6 +428,9 @@ export default function HomePage() {
         <div className="flex items-center gap-3">
           <span className="text-base font-bold tracking-tight text-white">⚖ GAVEL</span>
           <span className="text-[9px] text-zinc-600 uppercase tracking-widest hidden sm:block">Legal AI Reasoning Auditor</span>
+          <Link href="/research" className="text-[10px] text-amber-500 hover:text-amber-300 border border-amber-900/60 px-2.5 py-1 rounded transition-colors uppercase tracking-widest hidden sm:block">
+            ⊛ Research
+          </Link>
         </div>
         <div className="flex items-center gap-4 text-[10px] text-zinc-600">
           {toolParts.length > 0 && (

@@ -291,6 +291,8 @@ export function SourcesPanel({
   useEffect(() => {
     notify(indexedDocs);
     if (feedRef.current) feedRef.current.scrollTop = feedRef.current.scrollHeight;
+    // Persist for research page
+    try { localStorage.setItem("gavel_indexed_docs", JSON.stringify(indexedDocs)); } catch { /* ignore */ }
   }, [indexedDocs, notify]);
 
   async function ingestDocs(id: ConnectorId, rawDocs: RawDoc[]) {
