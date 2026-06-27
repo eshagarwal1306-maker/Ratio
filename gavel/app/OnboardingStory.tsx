@@ -109,7 +109,13 @@ const BADGE_COLORS: Record<string, string> = {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function OnboardingStory({ onClose }: { onClose: () => void }) {
+export function OnboardingStory({
+  onClose,
+  onLoadDemo,
+}: {
+  onClose: () => void;
+  onLoadDemo?: () => void;
+}) {
   const [step, setStep] = useState(0);
   const [visible, setVisible] = useState(false);
 
@@ -124,8 +130,13 @@ export function OnboardingStory({ onClose }: { onClose: () => void }) {
   }
 
   function next() {
-    if (step < STORY_SLIDES.length - 1) setStep(step + 1);
-    else close();
+    if (step < STORY_SLIDES.length - 1) {
+      setStep(step + 1);
+    } else {
+      // Last slide: load demo and close
+      onLoadDemo?.();
+      close();
+    }
   }
 
   function prev() {

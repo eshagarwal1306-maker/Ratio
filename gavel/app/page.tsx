@@ -8,6 +8,7 @@ import { Neo4jGraph } from "./Neo4jGraph";
 import { AgentRoster } from "./AgentRoster";
 import { SourcesPanel, type IndexedDoc } from "./SourcesPanel";
 import { OnboardingStory } from "./OnboardingStory";
+import { MonteCarloPanel } from "./MonteCarloPanel";
 
 // ─── Demo content ─────────────────────────────────────────────────────────────
 
@@ -18,6 +19,22 @@ Under DORA Article 30(3), your Master Services Agreement is non-compliant becaus
 We recommend an immediate review of all third-party ICT contracts to ensure compliance with the sub-outsourcing oversight requirements.`;
 
 const DEMO_ENTITY = "UK-based fintech firm with no EU establishment or EU-regulated subsidiary";
+
+// Jack & Jill scenario loaded from onboarding story
+const JACK_AND_JILL_MEMO = `MEMO: Re DORA Compliance — Jack & Jill Capital Partners
+
+STRICTLY PRIVILEGED & CONFIDENTIAL
+
+To: Board of Directors, Jack & Jill Capital Partners LLP
+Re: Digital Operational Resilience Act (DORA) — Compliance Obligations
+
+Under DORA Article 30(3), Jack & Jill Capital Partners must implement ICT sub-outsourcing oversight provisions in all material third-party service agreements by 17 January 2025. Failure to comply exposes the firm to regulatory penalties of up to 2% of global annual turnover under Article 50 of the Regulation.
+
+As a UK-based financial firm, DORA's provisions on ICT risk management (Chapter II) and third-party risk (Chapter V) apply in full. We recommend immediate review of all ICT MSAs to ensure sub-outsourcing clauses meet the Regulation's requirements.
+
+Reference: DORA (Regulation (EU) 2022/2554), Article 30(3); Article 50; EBA/GL/2019/04.`;
+
+const JACK_AND_JILL_ENTITY = "Jack & Jill Capital Partners LLP — UK-incorporated LLP, no EU establishment or EU-regulated subsidiary";
 
 // ─── Pricing (MTok rates, June 2026) ─────────────────────────────────────────
 // Opus 4.8: $15 in / $75 out  |  Sonnet 4.6: $3 in / $15 out
@@ -353,7 +370,7 @@ function estimateCost(toolParts: unknown[]): number {
 export default function HomePage() {
   const [docText, setDocText] = useState(DEMO_MEMO);
   const [entity, setEntity]   = useState(DEMO_ENTITY);
-  const [tab, setTab]         = useState<"feed" | "agents" | "graph">("feed");
+  const [tab, setTab]         = useState<"feed" | "agents" | "graph" | "simulation">("feed");
   const [leftTab, setLeftTab] = useState<"sources" | "audit">("sources");
   const [indexedDocs, setIndexedDocs] = useState<IndexedDoc[]>([]);
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -366,6 +383,12 @@ export default function HomePage() {
       }
     } catch { /* ignore */ }
   }, []);
+
+  function loadJackAndJillDemo() {
+    setDocText(JACK_AND_JILL_MEMO);
+    setEntity(JACK_AND_JILL_ENTITY);
+    setLeftTab("audit");
+  }
   const feedRef = useRef<HTMLDivElement>(null);
   const startTimeRef = useRef<number | null>(null);
   const [elapsed, setElapsed] = useState<number | null>(null);
@@ -439,6 +462,10 @@ export default function HomePage() {
             setShowOnboarding(false);
             try { localStorage.setItem("gavel_onboarding_seen", "1"); } catch { /* ignore */ }
           }}
+          onLoadDemo={() => {
+            loadJackAndJillDemo();
+            try { localStorage.setItem("gavel_onboarding_seen", "1"); } catch { /* ignore */ }
+          }}
         />
       )}
 
@@ -452,7 +479,8 @@ export default function HomePage() {
           </Link>
           <button
             onClick={() => setShowOnboarding(true)}
-            className="text-[10px] text-zinc-500 hover:text-zinc-300 border border-zinc-800 px-2.5 py-1 rounded transition-colors uppercase tracking-widest hidden sm:block"
+            className="text-[10px] text-zinc-400 hover:text-zinc-100 border border-zinc-700 hover:border-zinc-500 px-2.5 py-1 rounded transition-all uppercase tracking-widest hidden sm:block"
+            title="See the Jack & Jill story"
           >
             ◎ Story
           </button>
@@ -600,7 +628,7 @@ export default function HomePage() {
           {/* Tab bar */}
           <div className="px-4 py-2.5 border-b border-zinc-800/60 flex items-center justify-between shrink-0">
             <div className="flex items-center gap-1">
-              {(["feed", "agents", "graph"] as const).map((t) => (
+              {(["feed", "agents", "graph", "simulation"] as const).map((t) => (
                 <button
                   key={t}
                   onClick={() => setTab(t)}
@@ -610,7 +638,10 @@ export default function HomePage() {
                       : "text-zinc-600 hover:text-zinc-400"
                   }`}
                 >
-                  {t === "feed" ? "Activity Feed" : t === "agents" ? "Agents" : "Agent Graph"}
+                  {t === "feed" ? "Activity Feed"
+                    : t === "agents" ? "Agents"
+                    : t === "graph" ? "Agent Graph"
+                    : "Monte Carlo"}
                 </button>
               ))}
               {isRunning && <Pulse color="#4a9eff" />}
@@ -649,6 +680,13 @@ export default function HomePage() {
           {tab === "graph" && (
             <div className="flex-1 overflow-hidden bg-[#040408]">
               <Neo4jGraph isRunning={isRunning} />
+            </div>
+          )}
+
+          {/* Monte Carlo simulation */}
+          {tab === "simulation" && (
+            <div className="flex-1 overflow-hidden">
+              <MonteCarloPanel claimResults={claimResults} />
             </div>
           )}
         </div>
