@@ -45,12 +45,13 @@ export async function checkAmendments(celexId: string): Promise<{
   inForce: boolean;
   amendments: string[];
 }> {
+  // Note: cdm:resource_legal_in-force has a hyphen — must be escaped with <> in SPARQL
   const [forceBindings, amendBindings] = await Promise.all([
     sparqlQuery(`
       PREFIX cdm: <http://publications.europa.eu/ontology/cdm#>
       SELECT ?in_force WHERE {
         ?act cdm:resource_legal_id_celex "${celexId}" ;
-             cdm:resource_legal_in-force ?in_force .
+             <http://publications.europa.eu/ontology/cdm#resource_legal_in-force> ?in_force .
       } LIMIT 1
     `),
     sparqlQuery(`

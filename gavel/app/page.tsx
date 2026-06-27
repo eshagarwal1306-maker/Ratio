@@ -4,6 +4,7 @@ import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, lastAssistantMessageIsCompleteWithToolCalls } from "ai";
 import { useEffect, useRef, useState } from "react";
 import { Neo4jGraph } from "./Neo4jGraph";
+import { AgentRoster } from "./AgentRoster";
 
 // ─── Demo content ─────────────────────────────────────────────────────────────
 
@@ -349,7 +350,7 @@ function estimateCost(toolParts: unknown[]): number {
 export default function HomePage() {
   const [docText, setDocText] = useState(DEMO_MEMO);
   const [entity, setEntity]   = useState(DEMO_ENTITY);
-  const [tab, setTab]         = useState<"feed" | "graph">("feed");
+  const [tab, setTab]         = useState<"feed" | "agents" | "graph">("feed");
   const feedRef = useRef<HTMLDivElement>(null);
   const startTimeRef = useRef<number | null>(null);
   const [elapsed, setElapsed] = useState<number | null>(null);
@@ -519,7 +520,7 @@ export default function HomePage() {
           {/* Tab bar */}
           <div className="px-4 py-2.5 border-b border-zinc-800/60 flex items-center justify-between shrink-0">
             <div className="flex items-center gap-1">
-              {(["feed", "graph"] as const).map((t) => (
+              {(["feed", "agents", "graph"] as const).map((t) => (
                 <button
                   key={t}
                   onClick={() => setTab(t)}
@@ -529,7 +530,7 @@ export default function HomePage() {
                       : "text-zinc-600 hover:text-zinc-400"
                   }`}
                 >
-                  {t === "feed" ? "Activity Feed" : "Agent Graph"}
+                  {t === "feed" ? "Activity Feed" : t === "agents" ? "Agents" : "Agent Graph"}
                 </button>
               ))}
               {isRunning && <Pulse color="#4a9eff" />}
@@ -554,6 +555,13 @@ export default function HomePage() {
                 }
                 return <ThoughtCard key={`thought-${i}`} part={part} />;
               })}
+            </div>
+          )}
+
+          {/* Agents roster view */}
+          {tab === "agents" && (
+            <div className="flex-1 overflow-hidden">
+              <AgentRoster toolParts={toolParts} isRunning={isRunning} />
             </div>
           )}
 

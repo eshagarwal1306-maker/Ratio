@@ -40,6 +40,8 @@ export function Neo4jGraph({ isRunning }: { isRunning: boolean }) {
   const [graph, setGraph] = useState<GraphData>({ nodes: [], links: [] });
   const [tooltip, setTooltip] = useState<{ node: GNode; x: number; y: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const graphRef = useRef<any>(null);
   const [dims, setDims] = useState({ w: 800, h: 500 });
 
   // Measure container
@@ -52,6 +54,15 @@ export function Neo4jGraph({ isRunning }: { isRunning: boolean }) {
     ro.observe(containerRef.current);
     return () => ro.disconnect();
   }, []);
+
+  // Configure d3 forces for better node spread when graph data loads
+  useEffect(() => {
+    if (!graphRef.current || graph.nodes.length === 0) return;
+    const fg = graphRef.current;
+    fg.d3Force("charge")?.strength(-350);
+    fg.d3Force("link")?.distance(100).strength(0.5);
+    fg.d3Force("center")?.strength(0.05);
+  }, [graph.nodes.length]);
 
   // Poll /api/graph while running — server tracks latest auditId
   useEffect(() => {
@@ -158,6 +169,22 @@ export function Neo4jGraph({ isRunning }: { isRunning: boolean }) {
       ctx.textAlign = "center";
       ctx.fillText(node.subtitle, x, by + bh / 2);
     }
+
+    // Full name label below everything
+    const fullNames: Record<string, string> = {
+      orchestrator: "OPUS", extractClaims: "Extract Claims", runSourcer: "Sourcer",
+      runJurisdictionist: "Jurisdictionist", runHistorian: "Historian",
+      runDevilsAdvocate: "Devil's Advocate", runFirmMemory: "Firm Memory",
+      deepResearch: "Deep Research", reportClaim: "Report Claim",
+    };
+    const fullName = node.type === "claim"
+      ? `Score: ${node.score}/100`
+      : (fullNames[node.label] ?? node.label);
+    const labelY = y + r + (node.subtitle ? 20 : 10);
+    ctx.fillStyle = "rgba(255,255,255,0.35)";
+    ctx.font = `${Math.max(6, 8 / globalScale)}px monospace`;
+    ctx.textAlign = "center";
+    ctx.fillText(fullName, x, labelY);
   }, []);
 
   // Link canvas painter — animated dashed lines for active edges, solid for done
@@ -223,9 +250,14 @@ export function Neo4jGraph({ isRunning }: { isRunning: boolean }) {
 
   if (graph.nodes.length === 0) {
     return (
-      <div className="h-full flex flex-col items-center justify-center text-center opacity-40 space-y-3">
-        <div className="animate-spin text-2xl text-blue-400">◌</div>
-        <p className="text-xs text-zinc-500 uppercase tracking-widest">Waiting for Neo4j data…</p>
+      <div className="h-full flex flex-col items-center justify-center text-center opacity-30 space-y-4">
+        <div className="text-4xl text-blue-500 animate-pulse">◌</div>
+        <div className="space-y-1">
+          <p className="text-xs text-zinc-300 font-mono tracking-widest">NEO4J AGENT GRAPH</p>
+          <p className="text-[10px] text-zinc-600 uppercase tracking-widest">
+            {isRunning ? "Waiting for first agent call…" : "Run an audit to populate the graph"}
+          </p>
+        </div>
       </div>
     );
   }
@@ -234,6 +266,7 @@ export function Neo4jGraph({ isRunning }: { isRunning: boolean }) {
     <div ref={containerRef} className="relative w-full h-full bg-[#040408]">
       {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
       <ForceGraph2D
+        ref={graphRef}
         width={dims.w}
         height={dims.h}
         graphData={graph as any}
@@ -243,6 +276,7 @@ export function Neo4jGraph({ isRunning }: { isRunning: boolean }) {
         linkCanvasObject={paintLink as any}
         linkCanvasObjectMode={() => "replace"}
         onNodeHover={handleNodeHover as any}
+        onEngineStop={() => graphRef.current?.zoomToFit(400, 80)}
         nodeLabel=""
         cooldownTicks={150}
         d3AlphaDecay={0.015}
