@@ -49,6 +49,7 @@ type GetResult = (out: any) => { badge: string; detail?: string };
 const AGENT_DEFS: Array<{
   key: string; name: string; icon: string; color: string;
   model: string; tagline: string; description: string;
+  personality: string;
   tools: string[]; getResult: GetResult;
 }> = [
   {
@@ -59,6 +60,7 @@ const AGENT_DEFS: Array<{
     model: "Sonnet 4.6",
     tagline: "EUR-Lex article verification",
     description: "Fetches verbatim text from EUR-Lex and compares it against the AI claim. Detects hallucinated citations and misquoted provisions.",
+    personality: "\"I don't trust what I can't verify verbatim. Give me the primary source or I'll find it myself.\"",
     tools: ["fetchCellarArticle"],
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     getResult: (out: any) => ({
@@ -74,6 +76,7 @@ const AGENT_DEFS: Array<{
     model: "Sonnet 4.6",
     tagline: "EU scope & jurisdiction analysis",
     description: "Checks Article 2 scope provisions. Catches post-Brexit errors — UK-only firms are frequently outside EU regulatory scope.",
+    personality: "\"Article 2 is not a formality. It defines who legally exists inside a regulation. Brexit changed everything.\"",
     tools: ["fetchCellarArticle"],
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     getResult: (out: any) => ({
@@ -89,7 +92,8 @@ const AGENT_DEFS: Array<{
     model: "Sonnet 4.6",
     tagline: "Amendment & currency checks",
     description: "Queries EU Cellar SPARQL for in-force status and amendments. Detects AI models citing outdated draft article numbers.",
-    tools: ["checkAmendments", "sparqlQuery"],
+    personality: "\"History doesn't lie. That provision was repealed in December. The AI learned from the draft.\"",
+    tools: ["sparqlQuery", "checkAmendments"],
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     getResult: (out: any) => ({
       badge: out.status,
@@ -104,6 +108,7 @@ const AGENT_DEFS: Array<{
     model: "Sonnet 4.6",
     tagline: "Counter-authority research",
     description: "Searches for real cases, EBA/FCA guidance, and academic commentary that undermine or qualify the cited provision.",
+    personality: "\"Let me find four reasons this is wrong. Actually — I found six. You're welcome.\"",
     tools: ["webSearch", "sparqlQuery"],
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     getResult: (out: any) => ({
@@ -119,6 +124,7 @@ const AGENT_DEFS: Array<{
     model: "In-house",
     tagline: "Prior position conflict detection",
     description: "Scans the firm's past client advisories and matter records for positions that contradict the current claim.",
+    personality: "\"We told Barclays exactly the opposite in Q3. This memo would contradict our own prior advisory.\"",
     tools: ["corpus search"],
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     getResult: (out: any) => ({
@@ -187,6 +193,9 @@ export function AgentRoster({
                   Extended Thinking
                 </span>
               </div>
+              <p className="text-[10px] italic text-blue-300/60 border-l-2 border-blue-800/40 pl-2.5 mb-2 leading-relaxed">
+                &ldquo;Five agents. Five perspectives. One verdict. I don&rsquo;t deliver confidence — I manufacture doubt.&rdquo;
+              </p>
               <p className="text-[11px] text-zinc-500 leading-relaxed">
                 Adversarial multi-agent coordinator. Dispatches 5 specialist agents per claim, synthesises findings
                 under adversarial framing, and produces a GAVEL verdict with full reasoning trace.
@@ -264,6 +273,14 @@ export function AgentRoster({
                     {def.tagline}
                   </p>
                 </div>
+
+                {/* Personality quote */}
+                <p
+                  className="text-[10px] italic leading-relaxed mb-2 border-l-2 pl-2.5"
+                  style={{ color: def.color + "99", borderColor: def.color + "44" }}
+                >
+                  {def.personality}
+                </p>
 
                 {/* Description */}
                 <p className="text-[10px] text-zinc-600 leading-relaxed mb-3 flex-1">{def.description}</p>

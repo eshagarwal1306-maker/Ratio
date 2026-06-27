@@ -315,7 +315,10 @@ export function ResearchGraph({ toolParts, query, isRunning, indexedSources }: R
   }, []);
 
   const handleNodeHover = useCallback((node: RNode | null, evt?: MouseEvent) => {
-    if (!node || !evt) { setTooltip(null); return; }
+    if (!node || !evt || !isFinite(evt.offsetX) || !isFinite(evt.offsetY)) {
+      setTooltip(null);
+      return;
+    }
     setTooltip({ node, x: evt.offsetX + 14, y: evt.offsetY + 14 });
   }, []);
 

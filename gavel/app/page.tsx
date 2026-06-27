@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import { Neo4jGraph } from "./Neo4jGraph";
 import { AgentRoster } from "./AgentRoster";
 import { SourcesPanel, type IndexedDoc } from "./SourcesPanel";
+import { OnboardingStory } from "./OnboardingStory";
 
 // ─── Demo content ─────────────────────────────────────────────────────────────
 
@@ -355,6 +356,16 @@ export default function HomePage() {
   const [tab, setTab]         = useState<"feed" | "agents" | "graph">("feed");
   const [leftTab, setLeftTab] = useState<"sources" | "audit">("sources");
   const [indexedDocs, setIndexedDocs] = useState<IndexedDoc[]>([]);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+
+  // Show onboarding on first visit
+  useEffect(() => {
+    try {
+      if (!localStorage.getItem("gavel_onboarding_seen")) {
+        setShowOnboarding(true);
+      }
+    } catch { /* ignore */ }
+  }, []);
   const feedRef = useRef<HTMLDivElement>(null);
   const startTimeRef = useRef<number | null>(null);
   const [elapsed, setElapsed] = useState<number | null>(null);
@@ -422,6 +433,14 @@ export default function HomePage() {
 
   return (
     <main className="min-h-screen bg-[#040408] text-zinc-100 font-mono flex flex-col">
+      {showOnboarding && (
+        <OnboardingStory
+          onClose={() => {
+            setShowOnboarding(false);
+            try { localStorage.setItem("gavel_onboarding_seen", "1"); } catch { /* ignore */ }
+          }}
+        />
+      )}
 
       {/* ── Top bar ── */}
       <div className="border-b border-zinc-800/60 px-5 py-2.5 flex items-center justify-between shrink-0">
@@ -431,6 +450,12 @@ export default function HomePage() {
           <Link href="/research" className="text-[10px] text-amber-500 hover:text-amber-300 border border-amber-900/60 px-2.5 py-1 rounded transition-colors uppercase tracking-widest hidden sm:block">
             ⊛ Research
           </Link>
+          <button
+            onClick={() => setShowOnboarding(true)}
+            className="text-[10px] text-zinc-500 hover:text-zinc-300 border border-zinc-800 px-2.5 py-1 rounded transition-colors uppercase tracking-widest hidden sm:block"
+          >
+            ◎ Story
+          </button>
         </div>
         <div className="flex items-center gap-4 text-[10px] text-zinc-600">
           {toolParts.length > 0 && (
