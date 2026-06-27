@@ -138,7 +138,7 @@ export default function ResearchPage() {
   // Load indexed docs from localStorage (written by SourcesPanel)
   useEffect(() => {
     try {
-      const stored = localStorage.getItem("gavel_indexed_docs");
+      const stored = localStorage.getItem("ratio_indexed_docs");
       if (stored) setIndexedDocs(JSON.parse(stored));
     } catch { /* ignore */ }
   }, []);
@@ -197,7 +197,7 @@ export default function ResearchPage() {
       <div className="border-b border-zinc-800/60 px-5 py-2.5 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-4">
           <Link href="/" className="text-base font-bold tracking-tight text-zinc-400 hover:text-zinc-200 transition-colors">
-            ⚖ GAVEL
+            ⚖ RATIO
           </Link>
           <span className="text-zinc-700">/</span>
           <span className="text-sm font-bold text-amber-400 tracking-tight">Research</span>

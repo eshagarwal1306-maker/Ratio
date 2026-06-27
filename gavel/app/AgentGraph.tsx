@@ -110,8 +110,8 @@ export function AgentGraph({ toolParts }: { toolParts: any[] }) {
 
     if (dist(cx, cy, OX, OY) <= R_OPUS + 6) {
       setPopup(popup?.key === "orchestrator" ? null : {
-        key: "orchestrator", label: "GAVEL Orchestrator", color: "#4a9eff",
-        description: "Sonnet orchestrates all specialist agents — decides call order, batches parallel tool calls, and synthesises the final GAVEL score.",
+        key: "orchestrator", label: "RATIO Orchestrator", color: "#4a9eff",
+        description: "Sonnet orchestrates all specialist agents — decides call order, batches parallel tool calls, and synthesises the final RATIO score.",
         x: OX, y: OY,
       });
       return;

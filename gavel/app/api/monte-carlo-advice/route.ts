@@ -33,7 +33,7 @@ export async function POST(req: Request) {
   const result = await generateObject({
     model: anthropic("claude-sonnet-4-6"),
     schema: AdviceSchema,
-    prompt: `You are a senior legal reviewer analysing the output of an AI verification audit. The Monte Carlo simulation produced a mean GAVEL score of ${meanScore.toFixed(1)}/100, indicating the legal document needs strengthening.
+    prompt: `You are a senior legal reviewer analysing the output of an AI verification audit. The Monte Carlo simulation produced a mean RATIO score of ${meanScore.toFixed(1)}/100, indicating the legal document needs strengthening.
 
 Review these claim analysis results and provide actionable guidance for the lawyer:
 

@@ -33,7 +33,7 @@ export async function POST(request: Request) {
       agent: gravelOrchestrator,
       uiMessages: messages ?? [],
       onError: (err) => {
-        console.error("GAVEL stream error:", err);
+        console.error("RATIO stream error:", err);
         return err instanceof Error ? err.message : String(err);
       },
 
@@ -79,7 +79,7 @@ export async function POST(request: Request) {
       },
     });
   } catch (err) {
-    console.error("GAVEL route error:", err);
+    console.error("RATIO route error:", err);
     return new Response(JSON.stringify({ error: String(err) }), {
       status: 500,
       headers: { "Content-Type": "application/json" },

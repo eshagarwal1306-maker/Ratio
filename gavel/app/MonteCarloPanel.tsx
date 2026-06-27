@@ -14,11 +14,6 @@ interface AgentSnapshot {
 }
 
 interface SimResult {
-  histogram: number[];
-  mean: number;
-  stdDev: number;
-  p5: number;
-  p95: number;
   pDontSend: number;
   pReview: number;
   pProceed: number;
@@ -97,22 +92,11 @@ function runIteration(snap: AgentSnapshot): number {
 
 function computeStats(scores: number[]): SimResult {
   const n = scores.length;
-  const histogram = new Array(20).fill(0);
-  let sum = 0, dontSend = 0, review = 0, proceed = 0;
+  let dontSend = 0, review = 0, proceed = 0;
   for (const s of scores) {
-    histogram[Math.min(19, Math.floor(s / 5))]++;
-    sum += s;
     if (s < 40) dontSend++; else if (s < 70) review++; else proceed++;
   }
-  const mean = sum / n;
-  const variance = scores.reduce((a, s) => a + (s - mean) ** 2, 0) / n;
-  const sorted = [...scores].sort((a, b) => a - b);
   return {
-    histogram,
-    mean,
-    stdDev: Math.sqrt(variance),
-    p5: sorted[Math.floor(n * 0.05)] ?? 0,
-    p95: sorted[Math.floor(n * 0.95)] ?? 100,
     pDontSend: (dontSend / n) * 100,
     pReview: (review / n) * 100,
     pProceed: (proceed / n) * 100,
@@ -158,7 +142,6 @@ export function MonteCarloPanel({
   const snapshot  = snapshotFromResults(claimResults) ?? DEMO_SNAPSHOT;
   const usingDemo = claimResults.length === 0;
   const display   = live ?? result;
-  const maxBucket = display ? Math.max(...display.histogram, 1) : 1;
 
   // Auto-run on mount
   useEffect(() => {
@@ -201,7 +184,7 @@ export function MonteCarloPanel({
       const res = await fetch("/api/monte-carlo-advice", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ claimResults, meanScore: result.mean }),
+        body: JSON.stringify({ claimResults, meanScore: result.pProceed > 50 ? 75 : result.pReview > 50 ? 55 : 30 }),
       });
       const data: Advice = await res.json();
       setAdvice(data);
@@ -212,280 +195,306 @@ export function MonteCarloPanel({
     }
   }
 
-  // Dominant verdict
-  const verdictLabel = !display ? null
-    : display.pDontSend > display.pReview && display.pDontSend > display.pProceed ? "DO NOT SEND"
-    : display.pProceed  > display.pReview && display.pProceed  > display.pDontSend ? "PROCEED"
-    : "REVIEW REQUIRED";
-  const verdictColor = verdictLabel === "DO NOT SEND" ? "#b91c1c"
-    : verdictLabel === "PROCEED" ? "#15803d" : "#92400e";
-  const verdictBg = verdictLabel === "DO NOT SEND" ? "#fef2f2"
-    : verdictLabel === "PROCEED" ? "#f0fdf4" : "#fffbeb";
+  // ── Verdict config ────────────────────────────────────────────────────────
+
+  type Verdict = "dont-send" | "review" | "proceed";
+  const verdict: Verdict = !display
+    ? "review"
+    : display.pDontSend >= display.pReview && display.pDontSend >= display.pProceed
+      ? "dont-send"
+      : display.pProceed >= display.pReview && display.pProceed >= display.pDontSend
+        ? "proceed"
+        : "review";
+
+  const VERDICTS: Record<Verdict, {
+    label: string; emoji: string;
+    color: string; bg: string; border: string;
+    headline: string; body: string;
+    nextSteps: string[];
+  }> = {
+    "dont-send": {
+      label: "Do Not Send",
+      emoji: "✕",
+      color: "#b91c1c",
+      bg: "#fef2f2",
+      border: "#fecaca",
+      headline: "This memo has significant legal risks and should not be sent as drafted.",
+      body: "Our agents found problems that make this advice unreliable. Sending it without correction could expose the firm to negligence claims.",
+      nextSteps: [
+        "Address the flagged citation errors before sending",
+        "Have a senior partner review the jurisdictional analysis",
+        "Do not rely on this memo until the issues below are resolved",
+      ],
+    },
+    "review": {
+      label: "Needs Review",
+      emoji: "⚠",
+      color: "#92400e",
+      bg: "#fffbeb",
+      border: "#fde68a",
+      headline: "This memo needs senior review before it goes out.",
+      body: "There are some concerns that could be legitimate issues or just areas where more verification is needed. A senior partner should sign off before this leaves the firm.",
+      nextSteps: [
+        "Flag the highlighted citations for partner review",
+        "Consider verifying the jurisdiction analysis independently",
+        "Proceed only after resolving open questions",
+      ],
+    },
+    "proceed": {
+      label: "Clear to Send",
+      emoji: "✓",
+      color: "#15803d",
+      bg: "#f0fdf4",
+      border: "#bbf7d0",
+      headline: "This memo appears legally sound and can be sent.",
+      body: "Our verification found no significant issues with the citations, jurisdiction, or currency of the law cited. Standard partner sign-off applies.",
+      nextSteps: [
+        "Complete standard partner review",
+        "Note any minor qualifications flagged below",
+        "Send with confidence",
+      ],
+    },
+  };
+
+  const v = VERDICTS[verdict];
   const verdictPct = !display ? 0
-    : verdictLabel === "DO NOT SEND" ? display.pDontSend
-    : verdictLabel === "PROCEED" ? display.pProceed
+    : verdict === "dont-send" ? display.pDontSend
+    : verdict === "proceed" ? display.pProceed
     : display.pReview;
 
-  // Risk factors summary
-  const factors = [
-    {
-      label: "Citation accuracy",
-      status: snapshot.sourcerStatus === "CITED" ? "ok" : snapshot.sourcerStatus === "INFERRED" ? "warn" : "bad",
-      text: snapshot.sourcerStatus === "CITED" ? "Sources verified" : snapshot.sourcerStatus === "INFERRED" ? "Citations inferred" : "Sources not found",
-    },
-    {
-      label: "Jurisdiction",
-      status: snapshot.jurisdictionStatus === "APPLICABLE" ? "ok" : snapshot.jurisdictionStatus === "UNCLEAR" ? "warn" : "bad",
-      text: snapshot.jurisdictionStatus === "APPLICABLE" ? "In scope"
-        : snapshot.jurisdictionStatus === "UNCLEAR" ? "Scope unclear"
-        : `Wrong jurisdiction (${snapshot.jurisdictionConfidence}% confidence)`,
-    },
-    {
-      label: "Law currency",
-      status: snapshot.historianStatus === "CURRENT" ? "ok" : snapshot.historianStatus === "UNKNOWN" ? "warn" : "bad",
-      text: snapshot.historianStatus === "CURRENT" ? "Law is current" : snapshot.historianStatus === "UNKNOWN" ? "Currency unknown" : "Law has been amended",
-    },
-    {
-      label: "Counter-arguments",
-      status: snapshot.devilStrength === "low" ? "ok" : snapshot.devilStrength === "medium" ? "warn" : "bad",
-      text: snapshot.devilStrength === "low" ? "Weak counter-case" : snapshot.devilStrength === "medium" ? "Moderate counter-case" : "Strong counter-case found",
-    },
-    {
-      label: "Firm conflicts",
-      status: snapshot.memoryStatus === "NO_CONFLICT" ? "ok" : "bad",
-      text: snapshot.memoryStatus === "NO_CONFLICT" ? "No prior conflicts" : "Contradicts prior advice",
-    },
+  // Plain-English risk factors
+  const risks: Array<{ text: string; severity: "bad" | "warn" | "ok" }> = [
+    snapshot.sourcerStatus === "NOT_FOUND"
+      ? { text: "Citations could not be found in the primary source material", severity: "bad" }
+      : snapshot.sourcerStatus === "INFERRED"
+        ? { text: "Some citations appear paraphrased — they could not be verified verbatim", severity: "warn" }
+        : { text: "All citations verified against primary sources", severity: "ok" },
+    snapshot.jurisdictionStatus === "WRONG_JURISDICTION"
+      ? { text: `The cited regulation may not apply to this client entity (${snapshot.jurisdictionConfidence}% confidence)`, severity: "bad" }
+      : snapshot.jurisdictionStatus === "UNCLEAR"
+        ? { text: "It is unclear whether the cited law applies to this client", severity: "warn" }
+        : { text: "The cited law applies to this client", severity: "ok" },
+    snapshot.historianStatus === "AMENDED"
+      ? { text: "At least one cited provision has been amended — the memo may cite an outdated version", severity: "warn" }
+      : snapshot.historianStatus === "UNKNOWN"
+        ? { text: "Could not confirm whether all cited law is still current", severity: "warn" }
+        : { text: "All cited law is current and in force", severity: "ok" },
+    snapshot.devilStrength === "high"
+      ? { text: "A strong counter-argument exists that opposing counsel is likely to raise", severity: "bad" }
+      : snapshot.devilStrength === "medium"
+        ? { text: "There is a moderate counter-argument the advice should address", severity: "warn" }
+        : { text: "No strong counter-arguments identified", severity: "ok" },
+    snapshot.memoryStatus === "CONTRADICTION_FOUND"
+      ? { text: "This advice may conflict with a position the firm has previously taken", severity: "bad" }
+      : { text: "No conflicts with the firm's prior advice", severity: "ok" },
   ];
-  const STATUS_COLOR: Record<string, string> = { ok: "#15803d", warn: "#92400e", bad: "#b91c1c" };
-  const STATUS_BG:    Record<string, string> = { ok: "#f0fdf4", warn: "#fffbeb", bad: "#fef2f2" };
-  const STATUS_ICON:  Record<string, string> = { ok: "✓", warn: "⚠", bad: "✕" };
+
+  const SEV_ICON:  Record<string, string> = { bad: "✕", warn: "⚠", ok: "✓" };
+  const SEV_COLOR: Record<string, string> = { bad: "#b91c1c", warn: "#92400e", ok: "#15803d" };
+  const SEV_BG:    Record<string, string> = { bad: "#fef2f2", warn: "#fffbeb", ok: "#f0fdf4" };
 
   return (
-    <div className="h-full overflow-y-auto bg-white" style={{ padding: "28px 28px 48px" }}>
-
-      {/* Header */}
+    <div
+      className="h-full overflow-y-auto"
+      style={{ background: "#f8fafc", padding: "32px 28px 56px" }}
+    >
+      {/* ── Header ── */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h2 className="text-base font-bold text-slate-900">Risk Simulation</h2>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Monte Carlo · N = {N_TOTAL.toLocaleString()} simulations ·{" "}
-            {usingDemo
-              ? <span className="italic">demo scenario</span>
-              : <span>{claimResults.length} claims</span>}
-          </p>
+          <p className="text-xs text-slate-400 uppercase tracking-widest font-medium">Risk Assessment</p>
+          {usingDemo && (
+            <p className="text-[10px] text-slate-400 mt-0.5 italic">Using demo scenario</p>
+          )}
         </div>
         <button
           onClick={startSimulation}
           disabled={running}
-          className="px-4 py-2 rounded-lg text-xs font-semibold border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 transition-all"
+          className="text-xs text-slate-400 hover:text-slate-600 disabled:opacity-30 transition-colors"
         >
-          {running ? `${Math.round(progress * 100)}%…` : "↺ Re-run"}
+          {running ? `Analysing… ${Math.round(progress * 100)}%` : "↺ Re-run"}
         </button>
       </div>
 
-      {/* Progress bar */}
-      {running && (
-        <div className="mb-6">
-          <div className="h-1 rounded-full bg-slate-100 overflow-hidden">
+      {/* ── Running state ── */}
+      {running && !display && (
+        <div className="flex flex-col items-center justify-center py-20 text-center">
+          <div
+            className="w-16 h-16 rounded-full mb-6 flex items-center justify-center text-2xl"
+            style={{ background: "#e0e7ff", color: "#4f46e5" }}
+          >
+            ◎
+          </div>
+          <p className="text-sm font-semibold text-slate-700 mb-2">Running risk simulation…</p>
+          <p className="text-xs text-slate-400">Modelling 2,000 possible audit outcomes</p>
+          <div className="w-48 h-1 rounded-full bg-slate-200 mt-6 overflow-hidden">
             <div
-              className="h-full rounded-full bg-blue-500 transition-all duration-100"
+              className="h-full rounded-full bg-indigo-500 transition-all duration-100"
               style={{ width: `${Math.round(progress * 100)}%` }}
             />
           </div>
-          <p className="text-[10px] text-slate-400 mt-1.5 text-right">
-            {Math.min(scoresRef.current.length, N_TOTAL).toLocaleString()} / {N_TOTAL.toLocaleString()} iterations
-          </p>
         </div>
       )}
 
-      {/* ── Hero verdict ── */}
-      {display && verdictLabel && (
-        <div
-          className="rounded-2xl border p-6 mb-6 text-center"
-          style={{ backgroundColor: verdictBg, borderColor: verdictColor + "30" }}
-        >
-          <p className="text-xs font-semibold uppercase tracking-widest mb-2" style={{ color: verdictColor + "80" }}>
-            Most likely outcome
-          </p>
-          <p className="text-3xl font-bold mb-1" style={{ color: verdictColor }}>
-            {verdictLabel}
-          </p>
-          <p className="text-sm font-medium" style={{ color: verdictColor + "99" }}>
-            {verdictPct.toFixed(1)}% of simulated audits
-          </p>
-
-          {/* Split bar */}
-          <div className="flex h-2 rounded-full overflow-hidden mt-4 gap-px">
-            <div
-              className="transition-all duration-700 rounded-l-full"
-              style={{ width: `${display.pDontSend}%`, backgroundColor: "#ef4444" }}
-            />
-            <div
-              className="transition-all duration-700"
-              style={{ width: `${display.pReview}%`, backgroundColor: "#f59e0b" }}
-            />
-            <div
-              className="transition-all duration-700 rounded-r-full"
-              style={{ width: `${display.pProceed}%`, backgroundColor: "#22c55e" }}
-            />
-          </div>
-          <div className="flex justify-between text-[10px] mt-1.5" style={{ color: verdictColor + "70" }}>
-            <span>Don&apos;t send {display.pDontSend.toFixed(0)}%</span>
-            <span>Review {display.pReview.toFixed(0)}%</span>
-            <span>Proceed {display.pProceed.toFixed(0)}%</span>
-          </div>
-        </div>
-      )}
-
-      {/* ── Stats row ── */}
+      {/* ── Results ── */}
       {display && (
-        <div className="grid grid-cols-4 gap-3 mb-6">
-          {[
-            { label: "Expected score", value: display.mean.toFixed(1), sub: "/ 100" },
-            { label: "Std deviation", value: "±" + display.stdDev.toFixed(1), sub: "pts" },
-            { label: "Worst 5%", value: display.p5.toFixed(0), sub: "P5" },
-            { label: "Best 5%", value: display.p95.toFixed(0), sub: "P95" },
-          ].map((s) => (
-            <div key={s.label} className="rounded-xl border border-slate-100 bg-slate-50 p-3 text-center">
-              <p className="text-[10px] text-slate-400 mb-1">{s.label}</p>
-              <p className="text-xl font-bold text-slate-900 leading-none">
-                {s.value}
-                <span className="text-xs font-normal text-slate-400 ml-0.5">{s.sub}</span>
-              </p>
-            </div>
-          ))}
-        </div>
-      )}
+        <div className="space-y-5">
 
-      {/* ── Histogram ── */}
-      {display && (
-        <div className="rounded-2xl border border-slate-100 bg-slate-50 p-5 mb-6">
-          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-4">Score distribution</p>
-          <div className="flex items-end gap-0.5 h-24">
-            {display.histogram.map((count, i) => {
-              const score = i * 5;
-              const pct   = count / maxBucket;
-              const color = score < 40 ? "#fca5a5" : score < 70 ? "#fcd34d" : "#86efac";
-              return (
-                <div
-                  key={i}
-                  className="flex-1 rounded-t-sm transition-all duration-200"
-                  style={{
-                    height: `${Math.round(pct * 100)}%`,
-                    backgroundColor: color,
-                    minHeight: count > 0 ? 2 : 0,
-                  }}
-                  title={`${score}–${score + 4}: ${((count / display.n) * 100).toFixed(1)}%`}
-                />
-              );
-            })}
-          </div>
-          <div className="flex mt-2 h-1 rounded-full overflow-hidden gap-px">
-            <div className="rounded-l-full" style={{ width: "40%", backgroundColor: "#fca5a5" }} />
-            <div style={{ width: "30%", backgroundColor: "#fcd34d" }} />
-            <div className="rounded-r-full" style={{ width: "30%", backgroundColor: "#86efac" }} />
-          </div>
-          <div className="flex justify-between text-[9px] text-slate-400 mt-1 px-0.5">
-            <span>0</span><span>25</span><span>50</span><span>75</span><span>100</span>
-          </div>
-        </div>
-      )}
-
-      {/* ── Risk factors ── */}
-      <div className="space-y-2 mb-6">
-        <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-3">
-          Risk factors driving simulation
-        </p>
-        {factors.map((f) => (
+          {/* Verdict hero card */}
           <div
-            key={f.label}
-            className="flex items-center gap-3 px-3 py-2.5 rounded-xl border"
-            style={{ borderColor: STATUS_COLOR[f.status] + "30", backgroundColor: STATUS_BG[f.status] }}
+            className="rounded-2xl border p-7 text-center"
+            style={{ background: v.bg, borderColor: v.border }}
           >
-            <span
-              className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0"
-              style={{ backgroundColor: STATUS_COLOR[f.status] + "20", color: STATUS_COLOR[f.status] }}
+            {/* Icon */}
+            <div
+              className="w-14 h-14 rounded-full flex items-center justify-center text-2xl font-bold mx-auto mb-4"
+              style={{ background: v.color + "18", color: v.color, border: `2px solid ${v.color}30` }}
             >
-              {STATUS_ICON[f.status]}
-            </span>
-            <div className="flex-1 min-w-0">
-              <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">{f.label}</p>
-              <p className="text-xs text-slate-700 truncate">{f.text}</p>
+              {v.emoji}
             </div>
-          </div>
-        ))}
-      </div>
 
-      {/* ── AI refinement ── */}
-      {!running && result && result.mean < 70 && (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 space-y-4">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="text-xs font-bold text-amber-800">Source Refinement</p>
-              <p className="text-[11px] text-amber-700 mt-0.5 leading-relaxed">
-                Score below threshold — Claude can identify weak citations and suggest stronger sources.
-              </p>
-            </div>
-            {!advice && (
-              <button
-                onClick={getAdvice}
-                disabled={adviceLoading || usingDemo}
-                className="shrink-0 px-4 py-2 rounded-lg text-xs font-bold transition-all disabled:opacity-40"
-                style={{ backgroundColor: "#92400e", color: "#fff" }}
-              >
-                {adviceLoading ? "Analysing…" : "Get Suggestions"}
-              </button>
-            )}
-          </div>
+            {/* Label */}
+            <p
+              className="text-2xl font-bold mb-1"
+              style={{ color: v.color }}
+            >
+              {v.label}
+            </p>
 
-          {usingDemo && (
-            <p className="text-[10px] text-amber-600 italic">Run a real audit to get AI refinement suggestions.</p>
-          )}
+            {/* Confidence */}
+            <p className="text-sm mb-4" style={{ color: v.color + "80" }}>
+              {Math.round(verdictPct)}% probability across simulated scenarios
+            </p>
 
-          {advice && (
-            <div className="space-y-4">
-              <p className="text-xs text-amber-900 leading-relaxed">{advice.summary}</p>
-              {advice.flagged_areas.map((area, i) => (
-                <div key={i} className="bg-white rounded-xl border border-amber-100 p-4 space-y-2">
-                  <blockquote className="text-[10px] text-slate-400 italic border-l-2 border-amber-200 pl-2 line-clamp-2">
-                    &ldquo;{area.claim_snippet}&rdquo;
-                  </blockquote>
-                  <p className="text-xs font-semibold text-red-600">⚠ {area.issue}</p>
-                  <p className="text-[11px] text-slate-600 leading-relaxed">{area.suggestion}</p>
-                  {area.recommended_sources.length > 0 && (
-                    <ul className="space-y-1">
-                      {area.recommended_sources.map((src, j) => (
-                        <li key={j} className="text-[10px] text-slate-500 flex items-start gap-1.5">
-                          <span className="text-amber-500 shrink-0 mt-0.5">→</span>
-                          {src}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
+            {/* Explanation */}
+            <p className="text-sm text-slate-600 leading-relaxed mb-5 max-w-sm mx-auto">
+              {v.headline}
+            </p>
+
+            {/* Three probability pills */}
+            <div className="flex justify-center gap-2 flex-wrap">
+              {[
+                { label: "Don't send", pct: display.pDontSend, color: "#b91c1c", bg: "#fef2f2" },
+                { label: "Needs review", pct: display.pReview,   color: "#92400e", bg: "#fffbeb" },
+                { label: "Clear to send", pct: display.pProceed,  color: "#15803d", bg: "#f0fdf4" },
+              ].map((o) => (
+                <div
+                  key={o.label}
+                  className="rounded-full px-4 py-1.5 text-xs font-semibold"
+                  style={{ background: o.bg, color: o.color, border: `1px solid ${o.color}25` }}
+                >
+                  {o.label} — {Math.round(o.pct)}%
                 </div>
               ))}
-              {advice.overall_recommendation && (
-                <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-                  <p className="text-[10px] font-semibold text-amber-700 uppercase tracking-widest mb-1">Recommendation</p>
-                  <p className="text-xs text-amber-900 leading-relaxed">{advice.overall_recommendation}</p>
+            </div>
+          </div>
+
+          {/* What this means */}
+          <div className="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-3">What this means</p>
+            <p className="text-sm text-slate-700 leading-relaxed mb-4">{v.body}</p>
+            <div className="space-y-2">
+              {v.nextSteps.map((step, i) => (
+                <div key={i} className="flex items-start gap-2.5">
+                  <span className="text-slate-300 text-sm mt-0.5 shrink-0">→</span>
+                  <p className="text-sm text-slate-600">{step}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Risk factors */}
+          <div className="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-3">What the agents found</p>
+            <div className="space-y-2.5">
+              {risks.map((risk, i) => (
+                <div
+                  key={i}
+                  className="flex items-start gap-3 rounded-xl px-3.5 py-2.5"
+                  style={{ background: SEV_BG[risk.severity] }}
+                >
+                  <span
+                    className="shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold mt-0.5"
+                    style={{ background: SEV_COLOR[risk.severity] + "20", color: SEV_COLOR[risk.severity] }}
+                  >
+                    {SEV_ICON[risk.severity]}
+                  </span>
+                  <p className="text-sm text-slate-700 leading-snug">{risk.text}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* AI suggestions (only if result is not great) */}
+          {!running && result && (verdict === "dont-send" || verdict === "review") && (
+            <div className="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm">
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest">Get AI suggestions</p>
+                {!advice && (
+                  <button
+                    onClick={getAdvice}
+                    disabled={adviceLoading || usingDemo}
+                    className="text-xs font-semibold px-3.5 py-1.5 rounded-lg transition-all disabled:opacity-40"
+                    style={{ background: "#1c3461", color: "#fff" }}
+                  >
+                    {adviceLoading ? "Thinking…" : "How do I fix this?"}
+                  </button>
+                )}
+              </div>
+              <p className="text-sm text-slate-500 mb-4">
+                {usingDemo
+                  ? "Run a real audit to get specific suggestions for improving your memo."
+                  : "Claude can identify which citations to fix and suggest stronger alternatives."}
+              </p>
+
+              {advice && (
+                <div className="space-y-4">
+                  <p className="text-sm text-slate-700 leading-relaxed">{advice.summary}</p>
+
+                  {advice.flagged_areas.map((area, i) => (
+                    <div key={i} className="rounded-xl border border-slate-100 bg-slate-50 p-4 space-y-2">
+                      <blockquote className="text-xs text-slate-400 italic border-l-2 border-slate-200 pl-3 line-clamp-2">
+                        &ldquo;{area.claim_snippet}&rdquo;
+                      </blockquote>
+                      <p className="text-sm font-semibold text-red-600">⚠ {area.issue}</p>
+                      <p className="text-sm text-slate-600 leading-relaxed">{area.suggestion}</p>
+                      {area.recommended_sources.length > 0 && (
+                        <div className="pt-1">
+                          <p className="text-[10px] text-slate-400 uppercase tracking-widest mb-1.5">Better sources</p>
+                          <ul className="space-y-1">
+                            {area.recommended_sources.map((src, j) => (
+                              <li key={j} className="text-xs text-slate-500 flex items-start gap-2">
+                                <span className="text-indigo-400 shrink-0 mt-0.5">→</span>
+                                {src}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+
+                  {advice.overall_recommendation && (
+                    <div className="rounded-xl bg-indigo-50 border border-indigo-100 px-4 py-3">
+                      <p className="text-[10px] text-indigo-400 uppercase tracking-widest font-semibold mb-1">Recommendation</p>
+                      <p className="text-sm text-indigo-900 leading-relaxed">{advice.overall_recommendation}</p>
+                    </div>
+                  )}
+
+                  <button
+                    onClick={() => setAdvice(null)}
+                    className="text-[10px] text-slate-400 hover:text-slate-600 uppercase tracking-widest transition-colors"
+                  >
+                    ✕ Dismiss
+                  </button>
                 </div>
               )}
-              <button
-                onClick={() => setAdvice(null)}
-                className="text-[10px] text-amber-600 hover:text-amber-800 uppercase tracking-widest"
-              >
-                ✕ Dismiss
-              </button>
             </div>
           )}
-        </div>
-      )}
 
-      {/* Empty loading state */}
-      {!display && !running && (
-        <div className="h-40 flex flex-col items-center justify-center text-center text-slate-300 space-y-3">
-          <div className="text-4xl">◎</div>
-          <p className="text-xs">Loading simulation…</p>
+          {/* Footer note */}
+          <p className="text-[10px] text-slate-300 text-center pt-1">
+            Based on 2,000 simulated audit scenarios · Not legal advice
+          </p>
         </div>
       )}
     </div>

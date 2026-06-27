@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "GAVEL — Legal Citation Verifier",
-  description: "AI-powered legal citation verification for solicitors",
+  title: "RATIO — Legal Reasoning Auditor",
+  description: "AI-powered legal memo auditing for solicitors",
 };
 
 export default function RootLayout({

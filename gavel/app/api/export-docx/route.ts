@@ -33,7 +33,7 @@ function scoreLabel(score: number) {
 export async function POST(req: Request) {
   const { keptResults, docTitle }: { keptResults: ClaimResult[]; docTitle?: string } = await req.json();
 
-  const title = docTitle ?? "GAVEL Verification Report";
+  const title = docTitle ?? "RATIO Verification Report";
   const dateStr = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
 
   const overallScore = keptResults.length
@@ -140,7 +140,7 @@ export async function POST(req: Request) {
   // Footer disclaimer
   children.push(
     new Paragraph({
-      children: [new TextRun({ text: "This report was produced by GAVEL — an AI legal reasoning auditor. It does not constitute legal advice. All findings should be reviewed by a qualified solicitor.", size: 14, color: "9ca3af", italics: true })],
+      children: [new TextRun({ text: "This report was produced by RATIO — an AI legal reasoning auditor. It does not constitute legal advice. All findings should be reviewed by a qualified solicitor.", size: 14, color: "9ca3af", italics: true })],
       spacing: { before: 800 },
       alignment: AlignmentType.CENTER,
     }),
@@ -148,7 +148,7 @@ export async function POST(req: Request) {
 
   const doc = new Document({
     title,
-    creator: "GAVEL Legal AI",
+    creator: "RATIO Legal AI",
     sections: [{ properties: {}, children }],
   });
 
@@ -158,7 +158,7 @@ export async function POST(req: Request) {
   return new Response(uint8, {
     headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      "Content-Disposition": `attachment; filename="gavel-report-${Date.now()}.docx"`,
+      "Content-Disposition": `attachment; filename="ratio-report-${Date.now()}.docx"`,
     },
   });
 }

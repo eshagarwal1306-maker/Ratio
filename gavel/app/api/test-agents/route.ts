@@ -32,7 +32,7 @@ SELECT ?in_force WHERE {
     const res = await fetch(
       "https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:32022R2554",
       {
-        headers: { Accept: "text/html", "User-Agent": "GAVEL/1.0 Legal Research Tool" },
+        headers: { Accept: "text/html", "User-Agent": "RATIO/1.0 Legal Research Tool" },
         signal: AbortSignal.timeout(15_000),
       }
     );

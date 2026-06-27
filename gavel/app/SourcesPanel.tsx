@@ -8,7 +8,7 @@ const MOCK_GMAIL: RawDoc[] = [
   {
     id: "gm-1",
     title: "Re: TechFinance DORA Compliance — URGENT",
-    from: "j.richardson@gavel-law.com",
+    from: "j.richardson@ratio-law.com",
     date: "15 Mar 2024",
     snippet:
       "UK-incorporated firms without EU establishment are OUTSIDE DORA scope per Article 2. Our March 2024 advisory to TechFinance Ltd confirms this position.",
@@ -26,7 +26,7 @@ const MOCK_GMAIL: RawDoc[] = [
   {
     id: "gm-3",
     title: "DORA Article 2 Scope Analysis — Final",
-    from: "compliance@gavel-law.com",
+    from: "compliance@ratio-law.com",
     date: "10 Dec 2023",
     snippet:
       "Article 2(1) closed list requires EU authorisation or EU establishment. Post-Brexit UK entities without EU nexus are outside scope. FSMA 2023 governs.",
@@ -35,7 +35,7 @@ const MOCK_GMAIL: RawDoc[] = [
   {
     id: "gm-4",
     title: "Client alert: DORA Article 50 penalty clarification",
-    from: "partner@gavel-law.com",
+    from: "partner@ratio-law.com",
     date: "5 Nov 2023",
     snippet:
       "DORA Article 50 governs critical ICT third-party providers (CTPPs) — NOT a 2% turnover fine on financial entities. That figure conflates DORA with GDPR.",
@@ -44,7 +44,7 @@ const MOCK_GMAIL: RawDoc[] = [
   {
     id: "gm-5",
     title: "Research: ICT Sub-outsourcing Article 30",
-    from: "associates@gavel-law.com",
+    from: "associates@ratio-law.com",
     date: "8 Feb 2024",
     snippet:
       "DORA Article 30 sub-outsourcing requirements only engage once Article 2 scope is met. UK-only entity → Article 30 is irrelevant.",
@@ -101,7 +101,7 @@ const MOCK_LEXIS: RawDoc[] = [
 const MOCK_NOTION: RawDoc[] = [
   {
     id: "nt-1",
-    title: "GAVEL Internal Wiki — DORA FAQ",
+    title: "RATIO Internal Wiki — DORA FAQ",
     date: "2024",
     snippet:
       "Q: Does DORA apply to UK fintech clients? A: No, unless they have EU establishment or EU-authorised subsidiary. See TechFinance advisory March 2024.",
@@ -234,7 +234,7 @@ function GmailOAuthModal({ onAllow, onCancel }: { onAllow: () => void; onCancel:
         <div className="p-5 space-y-4">
           <div className="text-center space-y-1">
             <div className="w-12 h-12 rounded-full bg-[#ea4335]/20 flex items-center justify-center mx-auto text-2xl">✉</div>
-            <p className="text-sm font-semibold text-zinc-100">GAVEL Legal Auditor</p>
+            <p className="text-sm font-semibold text-zinc-100">RATIO Legal Auditor</p>
             <p className="text-[11px] text-zinc-400">wants access to your Google Account</p>
             <p className="text-[10px] text-zinc-600 font-mono">sahidmunjavar.s@gmail.com</p>
           </div>
@@ -292,7 +292,7 @@ export function SourcesPanel({
     notify(indexedDocs);
     if (feedRef.current) feedRef.current.scrollTop = feedRef.current.scrollHeight;
     // Persist for research page
-    try { localStorage.setItem("gavel_indexed_docs", JSON.stringify(indexedDocs)); } catch { /* ignore */ }
+    try { localStorage.setItem("ratio_indexed_docs", JSON.stringify(indexedDocs)); } catch { /* ignore */ }
   }, [indexedDocs, notify]);
 
   async function ingestDocs(id: ConnectorId, rawDocs: RawDoc[]) {
