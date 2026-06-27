@@ -518,7 +518,7 @@ export default function HomePage() {
                   leftTab === t ? "text-zinc-100" : "text-zinc-600 hover:text-zinc-400"
                 }`}
               >
-                {t === "sources" ? "Sources" : "Audit"}
+                {t === "sources" ? "Sources" : "Investigate"}
                 {t === "sources" && indexedDocs.length > 0 && (
                   <span className="absolute top-1.5 right-3 text-[7px] bg-blue-500 text-white rounded-full px-1 font-mono">
                     {indexedDocs.length}
@@ -546,7 +546,7 @@ export default function HomePage() {
                 )}
 
                 <div>
-                  <label className="text-[9px] text-zinc-500 uppercase tracking-widest block mb-1.5">AI-Generated Legal Document</label>
+                  <label className="text-[9px] text-zinc-500 uppercase tracking-widest block mb-1">Document Under Investigation</label>
                   <textarea
                     className="w-full bg-zinc-900/50 border border-zinc-800 rounded-lg p-3 text-xs text-zinc-200 h-44 resize-none focus:outline-none focus:border-zinc-600 leading-relaxed placeholder-zinc-700"
                     value={docText}
@@ -576,7 +576,7 @@ export default function HomePage() {
                 >
                   {isRunning
                     ? <span className="flex items-center justify-center gap-2"><span className="animate-spin inline-block">◌</span> Running…</span>
-                    : "▶  Run GAVEL Audit"}
+                    : "▶  Begin Investigation"}
                 </button>
 
                 {/* Stats */}
@@ -638,10 +638,10 @@ export default function HomePage() {
                       : "text-zinc-600 hover:text-zinc-400"
                   }`}
                 >
-                  {t === "feed" ? "Activity Feed"
-                    : t === "agents" ? "Agents"
-                    : t === "graph" ? "Agent Graph"
-                    : "Monte Carlo"}
+                  {t === "feed" ? "Live Feed"
+                    : t === "agents" ? "The Team"
+                    : t === "graph" ? "Evidence Map"
+                    : "Risk Forecast"}
                 </button>
               ))}
               {isRunning && <Pulse color="#4a9eff" />}
@@ -655,9 +655,12 @@ export default function HomePage() {
           {tab === "feed" && (
             <div ref={feedRef} className="flex-1 overflow-y-auto p-4 space-y-1.5">
               {feedParts.length === 0 && !isRunning && (
-                <div className="h-full flex flex-col items-center justify-center text-center opacity-20 space-y-3 pointer-events-none">
-                  <div className="text-5xl">⚖</div>
-                  <p className="text-xs text-zinc-500 uppercase tracking-widest">Run an audit to see live agent activity</p>
+                <div className="h-full flex flex-col items-center justify-center text-center opacity-30 space-y-4 pointer-events-none">
+                  <div className="text-5xl text-blue-400">⚖</div>
+                  <div className="space-y-1.5">
+                    <p className="text-sm text-zinc-300 font-semibold">Submit a document to begin</p>
+                    <p className="text-[11px] text-zinc-600">Five specialist agents will investigate every claim</p>
+                  </div>
                 </div>
               )}
               {feedParts.map((part, i) => {

@@ -247,68 +247,95 @@ export function ResearchGraph({ toolParts, query, isRunning, indexedSources }: R
 
     ctx.save();
 
-    // Outer animated glow ring for active nodes
+    // Atmosphere glow for active nodes
     if (isActive) {
-      const pulse = (Math.sin(t / 280) + 1) / 2;
-      const glowR = r * (2.8 + pulse * 0.8);
-      const grad = ctx.createRadialGradient(x, y, r * 0.5, x, y, glowR);
-      grad.addColorStop(0, color + "77");
-      grad.addColorStop(1, color + "00");
+      const pulse = (Math.sin(t / 260) + 1) / 2;
+      const glowR = r * (3 + pulse * 0.7);
+      const glow = ctx.createRadialGradient(x, y, r * 0.4, x, y, glowR);
+      glow.addColorStop(0, color + "70");
+      glow.addColorStop(0.5, color + "28");
+      glow.addColorStop(1, color + "00");
       ctx.beginPath();
       ctx.arc(x, y, glowR, 0, Math.PI * 2);
-      ctx.fillStyle = grad;
+      ctx.fillStyle = glow;
+      ctx.fill();
+    } else if (isDone) {
+      const subtleR = r * 2;
+      const subtle = ctx.createRadialGradient(x, y, r, x, y, subtleR);
+      subtle.addColorStop(0, color + "20");
+      subtle.addColorStop(1, color + "00");
+      ctx.beginPath();
+      ctx.arc(x, y, subtleR, 0, Math.PI * 2);
+      ctx.fillStyle = subtle;
       ctx.fill();
     }
 
-    // Extra ring for query node
+    // Animated rings for query node
     if (node.type === "query") {
-      const pulse = (Math.sin(t / 900) + 1) / 2;
+      const slowPulse = (Math.sin(t / 1000) + 1) / 2;
       ctx.beginPath();
-      ctx.arc(x, y, r + 6 + pulse * 3, 0, Math.PI * 2);
-      ctx.strokeStyle = color + "30";
+      ctx.arc(x, y, r + 6 + slowPulse * 4, 0, Math.PI * 2);
+      ctx.strokeStyle = color + "40";
       ctx.lineWidth = 1.5;
       ctx.stroke();
       ctx.beginPath();
-      ctx.arc(x, y, r + 12 + pulse * 2, 0, Math.PI * 2);
-      ctx.strokeStyle = color + "15";
+      ctx.arc(x, y, r + 16 + slowPulse * 2, 0, Math.PI * 2);
+      ctx.strokeStyle = color + "18";
       ctx.lineWidth = 1;
       ctx.stroke();
     }
 
-    // Node shape fill
-    ctx.beginPath();
-    switch (node.type) {
-      case "query":   drawHexagon(ctx, x, y, r); break;
-      case "finding": drawStar(ctx, x, y, r); break;
-      case "source":  drawRoundedSquare(ctx, x, y, r); break;
-      default:        ctx.arc(x, y, r, 0, Math.PI * 2);
+    // Shape path helper
+    function drawShape() {
+      ctx.beginPath();
+      switch (node.type) {
+        case "query":   drawHexagon(ctx, x, y, r); break;
+        case "finding": drawStar(ctx, x, y, r);    break;
+        case "source":  drawRoundedSquare(ctx, x, y, r); break;
+        default:        ctx.arc(x, y, r, 0, Math.PI * 2);
+      }
     }
 
-    // Fill with dark background
-    ctx.fillStyle = "#080818";
+    // Dark background fill
+    drawShape();
+    ctx.fillStyle = "#050511";
     ctx.fill();
 
-    // Stroke border
-    ctx.strokeStyle = color;
-    ctx.lineWidth = node.type === "query" ? 2.5 : isActive ? 2.2 : isDone ? 1.8 : 1;
+    // Inner radial gradient (depth)
+    drawShape();
+    const innerGrad = ctx.createRadialGradient(x - r * 0.25, y - r * 0.25, 0, x, y, r);
+    innerGrad.addColorStop(0, color + "25");
+    innerGrad.addColorStop(1, color + "00");
+    ctx.fillStyle = innerGrad;
+    ctx.fill();
+
+    // Border
+    drawShape();
+    ctx.strokeStyle = color + (isActive ? "ee" : isDone ? "99" : "50");
+    ctx.lineWidth = node.type === "query" ? 2.5 : isActive ? 2.2 : isDone ? 1.8 : 1.2;
     ctx.stroke();
 
-    // Icon inside node
-    const icons: Record<string, string> = {
+    // Icon
+    const ICONS: Record<string, string> = {
       query: "◎", api: "⊛", source: "⊡", finding: "★", concept: "◈",
     };
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillStyle = color;
-    ctx.font = `bold ${Math.max(8, r * 0.65)}px monospace`;
-    ctx.fillText(icons[node.type] ?? "○", x, y);
+    ctx.fillStyle = isActive ? color : isDone ? color + "dd" : color + "77";
+    ctx.font = `bold ${Math.max(8, r * 0.68)}px -apple-system, system-ui, sans-serif`;
+    ctx.fillText(ICONS[node.type] ?? "●", x, y);
 
-    // Label below node
-    if (globalScale > 0.35) {
-      ctx.fillStyle = isDone || isActive ? "rgba(255,255,255,0.65)" : "rgba(255,255,255,0.2)";
-      const fontSize = Math.max(6, 8.5 / globalScale);
-      ctx.font = `${fontSize}px monospace`;
-      ctx.fillText(node.label, x, y + r + (node.type === "source" ? r * 0.9 : r * 0.7) + 4);
+    // Label below
+    if (globalScale > 0.28) {
+      const labelY = y + r + (node.type === "source" ? r * 0.85 : r * 0.72) + 5;
+      const fontSize = Math.max(7, 9.5 / globalScale);
+      ctx.font = `${isDone || isActive ? 500 : 400} ${fontSize}px -apple-system, system-ui, sans-serif`;
+      ctx.fillStyle = isActive
+        ? "rgba(255,255,255,0.88)"
+        : isDone
+          ? "rgba(255,255,255,0.60)"
+          : "rgba(255,255,255,0.22)";
+      ctx.fillText(node.label, x, labelY);
     }
 
     ctx.restore();
