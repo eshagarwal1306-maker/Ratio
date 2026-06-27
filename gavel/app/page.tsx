@@ -5,6 +5,7 @@ import { DefaultChatTransport, lastAssistantMessageIsCompleteWithToolCalls } fro
 import { useEffect, useRef, useState } from "react";
 import { Neo4jGraph } from "./Neo4jGraph";
 import { AgentRoster } from "./AgentRoster";
+import { SourcesPanel, type IndexedDoc } from "./SourcesPanel";
 
 // ─── Demo content ─────────────────────────────────────────────────────────────
 
@@ -351,6 +352,8 @@ export default function HomePage() {
   const [docText, setDocText] = useState(DEMO_MEMO);
   const [entity, setEntity]   = useState(DEMO_ENTITY);
   const [tab, setTab]         = useState<"feed" | "agents" | "graph">("feed");
+  const [leftTab, setLeftTab] = useState<"sources" | "audit">("sources");
+  const [indexedDocs, setIndexedDocs] = useState<IndexedDoc[]>([]);
   const feedRef = useRef<HTMLDivElement>(null);
   const startTimeRef = useRef<number | null>(null);
   const [elapsed, setElapsed] = useState<number | null>(null);
@@ -399,7 +402,16 @@ export default function HomePage() {
   function runAudit() {
     if (!docText.trim() || isRunning) return;
     setElapsed(null);
-    sendMessage({ text: `Audit this legal document.\nENTITY: ${entity}\n\nDOCUMENT:\n${docText}` });
+    setLeftTab("audit");
+
+    const firmContext = indexedDocs.length > 0
+      ? `\n\nFIRM KNOWLEDGE BASE (${indexedDocs.length} documents indexed from connected sources):\n` +
+        indexedDocs.map((d) => `[${d.source.toUpperCase()}] ${d.title}: ${d.snippet}`).join("\n")
+      : "";
+
+    sendMessage({
+      text: `Audit this legal document.\nENTITY: ${entity}\n\nDOCUMENT:\n${docText}${firmContext}`,
+    });
   }
 
   const verdict = overallScore === null ? null :
@@ -437,79 +449,118 @@ export default function HomePage() {
       {/* ── Body: two columns ── */}
       <div className="flex flex-col lg:flex-row flex-1 min-h-0" style={{ height: "calc(100vh - 45px)" }}>
 
-        {/* ── Left: input ── */}
-        <div className="w-full lg:w-[380px] shrink-0 border-r border-zinc-800/60 flex flex-col overflow-y-auto">
-          <div className="p-4 space-y-4">
+        {/* ── Left panel ── */}
+        <div className="w-full lg:w-[380px] shrink-0 border-r border-zinc-800/60 flex flex-col overflow-hidden">
+          {/* Left tab bar */}
+          <div className="flex border-b border-zinc-800/60 shrink-0">
+            {(["sources", "audit"] as const).map((t) => (
+              <button
+                key={t}
+                onClick={() => setLeftTab(t)}
+                className={`flex-1 py-2 text-[10px] uppercase tracking-widest transition-colors relative ${
+                  leftTab === t ? "text-zinc-100" : "text-zinc-600 hover:text-zinc-400"
+                }`}
+              >
+                {t === "sources" ? "Sources" : "Audit"}
+                {t === "sources" && indexedDocs.length > 0 && (
+                  <span className="absolute top-1.5 right-3 text-[7px] bg-blue-500 text-white rounded-full px-1 font-mono">
+                    {indexedDocs.length}
+                  </span>
+                )}
+                {leftTab === t && (
+                  <span className="absolute bottom-0 left-0 right-0 h-px bg-zinc-300" />
+                )}
+              </button>
+            ))}
+          </div>
 
-            <div>
-              <label className="text-[9px] text-zinc-500 uppercase tracking-widest block mb-1.5">AI-Generated Legal Document</label>
-              <textarea
-                className="w-full bg-zinc-900/50 border border-zinc-800 rounded-lg p-3 text-xs text-zinc-200 h-44 resize-none focus:outline-none focus:border-zinc-600 leading-relaxed placeholder-zinc-700"
-                value={docText}
-                onChange={(e) => setDocText(e.target.value)}
-                placeholder="Paste an AI-generated legal memo or contract clause…"
-                disabled={isRunning}
-              />
-            </div>
+          {/* Left panel content */}
+          <div className="flex-1 overflow-y-auto">
+            {leftTab === "sources" ? (
+              <SourcesPanel onIndexed={setIndexedDocs} />
+            ) : (
+              <div className="p-4 space-y-4">
+                {/* Sources context pill */}
+                {indexedDocs.length > 0 && (
+                  <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-blue-900/50 bg-blue-950/20">
+                    <span className="text-blue-400 text-xs">⊡</span>
+                    <span className="text-[10px] text-blue-300">{indexedDocs.length} docs from connected sources will enrich Firm Memory</span>
+                  </div>
+                )}
 
-            <div>
-              <label className="text-[9px] text-zinc-500 uppercase tracking-widest block mb-1.5">Entity Description</label>
-              <input
-                className="w-full bg-zinc-900/50 border border-zinc-800 rounded-lg p-3 text-xs text-zinc-200 focus:outline-none focus:border-zinc-600 placeholder-zinc-700"
-                value={entity}
-                onChange={(e) => setEntity(e.target.value)}
-                placeholder="e.g. UK-based fintech with no EU establishment"
-                disabled={isRunning}
-              />
-            </div>
+                <div>
+                  <label className="text-[9px] text-zinc-500 uppercase tracking-widest block mb-1.5">AI-Generated Legal Document</label>
+                  <textarea
+                    className="w-full bg-zinc-900/50 border border-zinc-800 rounded-lg p-3 text-xs text-zinc-200 h-44 resize-none focus:outline-none focus:border-zinc-600 leading-relaxed placeholder-zinc-700"
+                    value={docText}
+                    onChange={(e) => setDocText(e.target.value)}
+                    placeholder="Paste an AI-generated legal memo or contract clause…"
+                    disabled={isRunning}
+                  />
+                </div>
 
-            <button
-              onClick={runAudit}
-              disabled={isRunning || !docText.trim()}
-              className={`w-full py-2.5 rounded-lg text-xs font-bold tracking-widest uppercase transition-all ${
-                isRunning ? "bg-zinc-800 text-zinc-500 cursor-not-allowed" : "bg-white text-zinc-950 hover:bg-zinc-200 cursor-pointer"
-              }`}
-            >
-              {isRunning ? <span className="flex items-center justify-center gap-2"><span className="animate-spin inline-block">◌</span> Running…</span> : "▶  Run GAVEL Audit"}
-            </button>
+                <div>
+                  <label className="text-[9px] text-zinc-500 uppercase tracking-widest block mb-1.5">Entity Description</label>
+                  <input
+                    className="w-full bg-zinc-900/50 border border-zinc-800 rounded-lg p-3 text-xs text-zinc-200 focus:outline-none focus:border-zinc-600 placeholder-zinc-700"
+                    value={entity}
+                    onChange={(e) => setEntity(e.target.value)}
+                    placeholder="e.g. UK-based fintech with no EU establishment"
+                    disabled={isRunning}
+                  />
+                </div>
 
-            {/* Stats row */}
-            {toolParts.length > 0 && (
-              <div className="grid grid-cols-3 gap-2">
-                <StatBox label="Tool calls" value={toolParts.length} />
-                <StatBox label="Claims" value={claimResults.length} />
-                <StatBox label="Est. cost" value={`$${estimatedCost.toFixed(3)}`} color="#f5a623" />
-              </div>
-            )}
+                <button
+                  onClick={runAudit}
+                  disabled={isRunning || !docText.trim()}
+                  className={`w-full py-2.5 rounded-lg text-xs font-bold tracking-widest uppercase transition-all ${
+                    isRunning ? "bg-zinc-800 text-zinc-500 cursor-not-allowed" : "bg-white text-zinc-950 hover:bg-zinc-200 cursor-pointer"
+                  }`}
+                >
+                  {isRunning
+                    ? <span className="flex items-center justify-center gap-2"><span className="animate-spin inline-block">◌</span> Running…</span>
+                    : "▶  Run GAVEL Audit"}
+                </button>
 
-            {/* Score / verdict */}
-            {verdict && overallScore !== null && (
-              <div className={`rounded-xl border ${verdict.border} p-4`}>
-                <div className="flex items-center gap-4">
-                  <div className="relative shrink-0">
-                    <ScoreRing score={overallScore} size={72} />
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <span className="text-base font-bold tabular-nums" style={{
-                        color: overallScore < 40 ? "#ff3b5c" : overallScore < 70 ? "#f5a623" : "#00d98b",
-                      }}>{overallScore}</span>
+                {/* Stats */}
+                {toolParts.length > 0 && (
+                  <div className="grid grid-cols-3 gap-2">
+                    <StatBox label="Tool calls" value={toolParts.length} />
+                    <StatBox label="Claims" value={claimResults.length} />
+                    <StatBox label="Est. cost" value={`$${estimatedCost.toFixed(3)}`} color="#f5a623" />
+                  </div>
+                )}
+
+                {/* Score / verdict */}
+                {verdict && overallScore !== null && (
+                  <div className={`rounded-xl border ${verdict.border} p-4`}>
+                    <div className="flex items-center gap-4">
+                      <div className="relative shrink-0">
+                        <ScoreRing score={overallScore} size={72} />
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <span className="text-base font-bold tabular-nums" style={{
+                            color: overallScore < 40 ? "#ff3b5c" : overallScore < 70 ? "#f5a623" : "#00d98b",
+                          }}>{overallScore}</span>
+                        </div>
+                      </div>
+                      <div>
+                        <p className={`text-sm font-bold tracking-wider ${verdict.color}`}>{verdict.text}</p>
+                        <p className="text-[10px] text-zinc-500 mt-0.5">{verdict.sub}</p>
+                        <p className="text-[10px] text-zinc-600 mt-1">GAVEL score / 100</p>
+                      </div>
                     </div>
                   </div>
-                  <div>
-                    <p className={`text-sm font-bold tracking-wider ${verdict.color}`}>{verdict.text}</p>
-                    <p className="text-[10px] text-zinc-500 mt-0.5">{verdict.sub}</p>
-                    <p className="text-[10px] text-zinc-600 mt-1">GAVEL score / 100</p>
-                  </div>
-                </div>
-              </div>
-            )}
+                )}
 
-            {/* Pricing breakdown note */}
-            {toolParts.length > 0 && (
-              <div className="rounded-lg border border-zinc-800/60 p-3 text-[10px] text-zinc-600 space-y-1">
-                <p className="text-zinc-500 uppercase tracking-widest mb-1">Pricing basis</p>
-                <p>Opus 4.8 — $15/MTok in · $75/MTok out</p>
-                <p>Sonnet 4.6 — $3/MTok in · $15/MTok out</p>
-                <p className="text-zinc-700 mt-1">Estimate based on ~{toolParts.length} calls at avg token heuristics.</p>
+                {/* Pricing */}
+                {toolParts.length > 0 && (
+                  <div className="rounded-lg border border-zinc-800/60 p-3 text-[10px] text-zinc-600 space-y-1">
+                    <p className="text-zinc-500 uppercase tracking-widest mb-1">Pricing basis</p>
+                    <p>Opus 4.8 — $15/MTok in · $75/MTok out</p>
+                    <p>Sonnet 4.6 — $3/MTok in · $15/MTok out</p>
+                    <p className="text-zinc-700 mt-1">Estimate based on ~{toolParts.length} calls at avg token heuristics.</p>
+                  </div>
+                )}
               </div>
             )}
           </div>
