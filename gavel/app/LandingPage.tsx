@@ -387,14 +387,315 @@ function DocPreview() {
   );
 }
 
+// ── Persona preview card ──────────────────────────────────────────────────────
+
+const PERSONA_PREVIEWS = [
+  { initial: "J", bg: "#1e3a5f", name: "High Court Judge",   verdict: "REJECTS",         color: "#b91c1c", vbg: "#fef2f2", vborder: "#fca5a5" },
+  { initial: "O", bg: "#7c1d1d", name: "Opposing Counsel",   verdict: "RAISES CONCERNS", color: "#92400e", vbg: "#fffbeb", vborder: "#fde68a" },
+  { initial: "R", bg: "#1a3d2b", name: "FCA Regulator",      verdict: "RAISES CONCERNS", color: "#92400e", vbg: "#fffbeb", vborder: "#fde68a" },
+  { initial: "P", bg: "#3b2060", name: "Partner Risk Review", verdict: "REJECTS",         color: "#b91c1c", vbg: "#fef2f2", vborder: "#fca5a5" },
+];
+
+function PersonaPreview() {
+  return (
+    <div style={{
+      background: T.white, border: `1px solid ${T.border}`,
+      borderRadius: 10, overflow: "hidden",
+      boxShadow: "0 4px 24px rgba(0,0,0,0.07)",
+    }}>
+      <div style={{
+        padding: "10px 16px", borderBottom: `1px solid ${T.borderLight}`,
+        background: "#fafaf8", display: "flex", alignItems: "center", justifyContent: "space-between",
+      }}>
+        <p style={{ fontSize: 11, fontWeight: 700, color: T.ink }}>Scenario Stress Test</p>
+        <span style={{ fontSize: 9, color: T.red, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" }}>
+          Live simulation
+        </span>
+      </div>
+      <div style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
+        {PERSONA_PREVIEWS.map((p) => (
+          <div key={p.name} style={{
+            display: "flex", alignItems: "center", gap: 10,
+            padding: "8px 10px", borderRadius: 8, background: "#fafaf9",
+            border: `1px solid ${T.borderLight}`,
+          }}>
+            <div style={{
+              width: 28, height: 28, borderRadius: "50%",
+              background: p.bg, color: "#fff",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 11, fontWeight: 800, flexShrink: 0,
+            }}>{p.initial}</div>
+            <p style={{ fontSize: 11, color: T.inkMid, flex: 1, fontWeight: 500 }}>{p.name}</p>
+            <span style={{
+              fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 4,
+              background: p.vbg, color: p.color, border: `1px solid ${p.vborder}`,
+              letterSpacing: "0.04em", whiteSpace: "nowrap",
+            }}>{p.verdict}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Proposition match preview card ────────────────────────────────────────────
+
+function PropositionPreview() {
+  const stances = [
+    { label: "Strict Textual",        pct: 20, color: "#ef4444" },
+    { label: "Purposive",             pct: 60, color: "#f59e0b" },
+    { label: "Commercially Pragmatic",pct: 85, color: "#16a34a" },
+  ];
+  return (
+    <div style={{
+      background: T.white, border: `1px solid ${T.border}`,
+      borderRadius: 10, overflow: "hidden",
+      boxShadow: "0 4px 24px rgba(0,0,0,0.07)",
+    }}>
+      <div style={{
+        padding: "10px 16px", borderBottom: `1px solid ${T.borderLight}`,
+        background: "#fafaf8", display: "flex", alignItems: "center", justifyContent: "space-between",
+      }}>
+        <p style={{ fontSize: 11, fontWeight: 700, color: T.ink }}>Proposition Match</p>
+        <span style={{
+          fontSize: 9, color: "#4f46e5", fontWeight: 700,
+          letterSpacing: "0.06em", textTransform: "uppercase",
+          background: "#eef2ff", padding: "2px 7px", borderRadius: 4,
+          border: "1px solid #c7d2fe",
+        }}>18 runs · Monte Carlo</span>
+      </div>
+
+      <div style={{ padding: "14px 16px" }}>
+        <div style={{ textAlign: "center", marginBottom: 14 }}>
+          <p style={{ fontSize: 28, fontWeight: 800, color: "#92400e", lineHeight: 1 }}>48%</p>
+          <p style={{ fontSize: 10, color: T.inkFaint, marginTop: 3 }}>proposition match confidence</p>
+          <div style={{ height: 6, borderRadius: 4, background: "#f3f4f6", margin: "8px 0 0", overflow: "hidden" }}>
+            <div style={{ height: "100%", width: "48%", background: "#f59e0b", borderRadius: 4 }} />
+          </div>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {stances.map((s) => (
+            <div key={s.label} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <p style={{ fontSize: 10, color: T.inkMid, width: 130, flexShrink: 0 }}>{s.label}</p>
+              <div style={{ flex: 1, height: 4, borderRadius: 4, background: "#f3f4f6", overflow: "hidden" }}>
+                <div style={{ height: "100%", width: `${s.pct}%`, background: s.color, borderRadius: 4 }} />
+              </div>
+              <p style={{ fontSize: 10, fontWeight: 700, color: s.color, width: 28, textAlign: "right" }}>{s.pct}%</p>
+            </div>
+          ))}
+        </div>
+        <div style={{
+          marginTop: 10, padding: "7px 10px",
+          background: "#fef2f2", borderRadius: 6, border: `1px solid ${T.redBorder}`,
+        }}>
+          <p style={{ fontSize: 10, color: T.red, lineHeight: 1.5 }}>
+            Case establishes principle in commercial context; being cited in consumer context
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Hero tabbed tool preview ──────────────────────────────────────────────────
+
+const TOOL_TABS = [
+  { id: "audit",       label: "Citation Audit",    color: T.red,    labelBg: "#fef2f2",   labelBorder: "#fca5a5"  },
+  { id: "stress",      label: "Persona Stress Test", color: "#7c3aed", labelBg: "#f5f3ff", labelBorder: "#ddd6fe" },
+  { id: "proposition", label: "Proposition Match",  color: "#4f46e5", labelBg: "#eef2ff",  labelBorder: "#c7d2fe" },
+] as const;
+
+function HeroToolPreview({
+  onVerify, onPersonaTest, onPropositionMatch,
+}: {
+  onVerify: () => void;
+  onPersonaTest: () => void;
+  onPropositionMatch: () => void;
+}) {
+  const [active, setActive] = useState<"audit" | "stress" | "proposition">("audit");
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      setActive((prev) =>
+        prev === "audit" ? "stress" : prev === "stress" ? "proposition" : "audit"
+      );
+    }, 4000);
+    return () => clearInterval(id);
+  }, []);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+      {/* Tab strip */}
+      <div style={{
+        display: "flex", gap: 0, background: "#fff",
+        border: `1px solid ${T.border}`, borderRadius: "10px 10px 0 0",
+        borderBottom: "none", overflow: "hidden",
+      }}>
+        {TOOL_TABS.map((t) => {
+          const isActive = active === t.id;
+          return (
+            <button
+              key={t.id}
+              onClick={() => setActive(t.id)}
+              style={{
+                flex: 1, padding: "10px 0", border: "none", cursor: "pointer", fontSize: 10,
+                fontWeight: 700, letterSpacing: "0.05em", transition: "all 0.18s",
+                background: isActive ? "#fff" : "#fafaf8",
+                color: isActive ? t.color : T.inkFaint,
+                borderBottom: isActive ? `2px solid ${t.color}` : "2px solid transparent",
+              }}
+            >
+              {t.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Panel */}
+      <div style={{ border: `1px solid ${T.border}`, borderRadius: "0 0 10px 10px", overflow: "hidden" }}>
+        {active === "audit"       && <DocPreview />}
+        {active === "stress"      && <PersonaPreview />}
+        {active === "proposition" && <PropositionPreview />}
+      </div>
+
+      {/* CTA under preview */}
+      <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+        {active === "audit" && (
+          <>
+            <button onClick={onVerify} className="btn-primary" style={{ flex: 1, padding: "10px 0", borderRadius: 7, border: "none", cursor: "pointer", background: T.navyBtn, color: "#fff", fontSize: 12, fontWeight: 700, transition: "background 0.15s, transform 0.15s" }}>
+              Verify Citations →
+            </button>
+          </>
+        )}
+        {active === "stress" && (
+          <button onClick={onPersonaTest} style={{ flex: 1, padding: "10px 0", borderRadius: 7, border: "1px solid #ddd6fe", cursor: "pointer", background: "#f5f3ff", color: "#7c3aed", fontSize: 12, fontWeight: 700 }}>
+            Run Stress Test →
+          </button>
+        )}
+        {active === "proposition" && (
+          <button onClick={onPropositionMatch} style={{ flex: 1, padding: "10px 0", borderRadius: 7, border: "none", cursor: "pointer", background: "#1c3461", color: "#fff", fontSize: 12, fontWeight: 700 }}>
+            Test a Proposition →
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Three-tool cards section ──────────────────────────────────────────────────
+
+function ThreeTools({
+  onVerify, onPersonaTest, onPropositionMatch,
+}: {
+  onVerify: () => void;
+  onPersonaTest: () => void;
+  onPropositionMatch: () => void;
+}) {
+  const tools = [
+    {
+      badge: "5 adversarial agents",
+      badgeColor: T.red, badgeBg: T.redBg, badgeBorder: T.redBorder,
+      title: "Citation Audit",
+      desc: "Five specialist agents verify every citation, statute, and legal proposition in your memo. Wrong jurisdiction, phantom articles, repealed law — caught before you send.",
+      bullets: ["Citation sourcer · jurisdictionist", "Legal historian · devil's advocate", "Firm memory · contradiction check", "Runs in ~3 minutes on a full memo"],
+      bulletColor: T.red,
+      preview: <DocPreview />,
+      cta: "Audit a memo →",
+      ctaStyle: { background: T.navyBtn, color: "#fff", border: "none" } as React.CSSProperties,
+      onClick: onVerify,
+    },
+    {
+      badge: "5 stakeholder perspectives",
+      badgeColor: "#7c3aed", badgeBg: "#f5f3ff", badgeBorder: "#ddd6fe",
+      title: "Persona Stress Test",
+      desc: "Your memo passes the agents — but would it survive cross-examination by a High Court judge? Opposing counsel? The FCA? Run it through five adversarial stakeholders simultaneously.",
+      bullets: ["Upload any document or paste text", "Add your own custom judge profile", "Simultaneous multi-lens review", "Exportable Word report"],
+      bulletColor: "#7c3aed",
+      preview: <PersonaPreview />,
+      cta: "Run Stress Test →",
+      ctaStyle: { background: "#f5f3ff", color: "#7c3aed", border: "1px solid #ddd6fe" } as React.CSSProperties,
+      onClick: onPersonaTest,
+    },
+    {
+      badge: "Monte Carlo · 3–18 runs",
+      badgeColor: "#4f46e5", badgeBg: "#eef2ff", badgeBorder: "#c7d2fe",
+      title: "Proposition Match",
+      desc: "Does this case actually support this proposition? RATIO runs the question across three interpretive stances and factual framings, then gives you a confidence score — not a binary yes/no.",
+      bullets: ["Strict textual · purposive · pragmatic", "Narrow vs broad factual framing", "Confidence score with breakdown", "Powered by Nemotron via OpenRouter"],
+      bulletColor: "#4f46e5",
+      preview: <PropositionPreview />,
+      cta: "Test a Proposition →",
+      ctaStyle: { background: "#1c3461", color: "#fff", border: "none" } as React.CSSProperties,
+      onClick: onPropositionMatch,
+    },
+  ];
+
+  return (
+    <section style={{ background: T.white, padding: "80px 56px", borderTop: `1px solid ${T.border}` }}>
+      <div style={{ maxWidth: 1200, margin: "0 auto" }}>
+        <div style={{ marginBottom: 52, maxWidth: 600 }}>
+          <p style={{ fontSize: 10, fontWeight: 700, color: T.inkFaint, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 12 }}>
+            The platform
+          </p>
+          <h2 style={{ fontFamily: "Georgia, serif", fontSize: "clamp(22px, 2.4vw, 34px)", fontWeight: 700, letterSpacing: "-0.02em", marginBottom: 12 }}>
+            Three tools.{" "}
+            <span style={{ color: T.inkFaint }}>One complete legal review.</span>
+          </h2>
+          <p style={{ fontSize: 14, color: T.inkMid, lineHeight: 1.65 }}>
+            RATIO is not just a citation checker. Run the full pipeline — audit first, then stress-test the conclusion, then verify that every case you cited actually supports the proposition you are making.
+          </p>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 24 }}>
+          {tools.map((t) => (
+            <div key={t.title} style={{ display: "flex", flexDirection: "column", background: T.parchment, border: `1px solid ${T.border}`, borderRadius: 12, overflow: "hidden" }}>
+              {/* Preview */}
+              <div style={{ padding: "0" }}>
+                {t.preview}
+              </div>
+
+              {/* Content */}
+              <div style={{ padding: "22px 22px 20px", display: "flex", flexDirection: "column", gap: 14, flex: 1 }}>
+                <span style={{ display: "inline-block", fontSize: 9, fontWeight: 700, padding: "3px 8px", borderRadius: 4, background: t.badgeBg, color: t.badgeColor, border: `1px solid ${t.badgeBorder}`, letterSpacing: "0.07em", textTransform: "uppercase", alignSelf: "flex-start" }}>
+                  {t.badge}
+                </span>
+                <div>
+                  <h3 style={{ fontFamily: "Georgia, serif", fontSize: 18, fontWeight: 700, color: T.ink, marginBottom: 8 }}>{t.title}</h3>
+                  <p style={{ fontSize: 12, color: T.inkMid, lineHeight: 1.7 }}>{t.desc}</p>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                  {t.bullets.map((b) => (
+                    <div key={b} style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                      <span style={{ color: t.bulletColor, fontSize: 10, flexShrink: 0 }}>→</span>
+                      <p style={{ fontSize: 11, color: T.inkMid }}>{b}</p>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  onClick={t.onClick}
+                  style={{ marginTop: "auto", padding: "10px 0", borderRadius: 7, cursor: "pointer", fontSize: 12, fontWeight: 700, ...t.ctaStyle }}
+                >
+                  {t.cta}
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 interface LandingPageProps {
   onVerify: () => void;
   onFind: () => void;
+  onPersonaTest: () => void;
+  onPropositionMatch: () => void;
 }
 
-export function LandingPage({ onVerify, onFind }: LandingPageProps) {
+export function LandingPage({ onVerify, onFind, onPersonaTest, onPropositionMatch }: LandingPageProps) {
   return (
     <main style={{ background: T.parchment, minHeight: "100vh", color: T.ink }}>
       <style>{`
@@ -424,6 +725,16 @@ export function LandingPage({ onVerify, onFind }: LandingPageProps) {
             border: `1px solid ${T.border}`, borderRadius: 4,
             letterSpacing: "0.05em", textTransform: "uppercase",
           }}>Cambridge Hack the Law 2026</span>
+          <button onClick={onPersonaTest} style={{
+            fontSize: 12, fontWeight: 600, padding: "7px 14px",
+            background: "transparent", color: "#7c3aed",
+            borderRadius: 6, border: "1px solid #ddd6fe", cursor: "pointer",
+          }}>Stress Test</button>
+          <button onClick={onPropositionMatch} style={{
+            fontSize: 12, fontWeight: 600, padding: "7px 14px",
+            background: "transparent", color: "#4f46e5",
+            borderRadius: 6, border: "1px solid #c7d2fe", cursor: "pointer",
+          }}>Proposition</button>
           <button onClick={onVerify} className="btn-primary" style={{
             fontSize: 12, fontWeight: 700, padding: "8px 18px",
             background: T.navyBtn, color: "#fff",
@@ -434,8 +745,8 @@ export function LandingPage({ onVerify, onFind }: LandingPageProps) {
       </nav>
 
       {/* ── Hero ────────────────────────────────────────────────────────────── */}
-      <section style={{ padding: "88px 56px 72px", maxWidth: 1200, margin: "0 auto" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 72, alignItems: "center" }}>
+      <section style={{ padding: "80px 56px 64px", maxWidth: 1200, margin: "0 auto" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 64, alignItems: "center" }}>
 
           <div style={{ animation: "fadeUp 0.5s ease both" }}>
             <div style={{
@@ -448,7 +759,7 @@ export function LandingPage({ onVerify, onFind }: LandingPageProps) {
                 background: T.redBg, border: `1px solid ${T.redBorder}`,
                 display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8,
               }}>!</span>
-              5 adversarial agents · runs in ~3 minutes
+              Three tools · one legal review pipeline
             </div>
 
             <h1 style={{
@@ -456,37 +767,63 @@ export function LandingPage({ onVerify, onFind }: LandingPageProps) {
               fontSize: "clamp(32px, 3.6vw, 52px)", fontWeight: 700,
               lineHeight: 1.1, letterSpacing: "-0.02em", marginBottom: 24, color: T.ink,
             }}>
-              AI wrote the memo.<br />
-              <span style={{ color: T.red }}>We found the errors.</span>
+              The AI wrote it.<br />
+              <span style={{ color: T.red }}>Now check every layer.</span>
             </h1>
 
-            <p style={{ fontSize: 16, color: T.inkMid, lineHeight: 1.75, marginBottom: 36, maxWidth: 440 }}>
-              AI-drafted memos hallucinate citations, misapply jurisdiction, and cite
-              repealed law. RATIO deploys five specialist agents to catch every error
-              before it becomes a professional liability exposure.
+            <p style={{ fontSize: 16, color: T.inkMid, lineHeight: 1.75, marginBottom: 32, maxWidth: 440 }}>
+              RATIO is three tools in one pipeline — verify every citation,
+              stress-test the conclusion against five adversarial stakeholders,
+              and confirm each case actually supports the proposition you are making.
             </p>
 
-            <div style={{ display: "flex", gap: 10 }}>
-              <button onClick={onVerify} className="btn-primary" style={{
-                padding: "13px 26px", borderRadius: 7, border: "none", cursor: "pointer",
-                background: T.navyBtn, color: "#fff",
-                fontSize: 14, fontWeight: 700, letterSpacing: "0.01em",
-                transition: "background 0.15s, transform 0.15s",
-              }}>Verify Citations →</button>
-              <button onClick={onFind} className="btn-ghost" style={{
-                padding: "13px 22px", borderRadius: 7, cursor: "pointer",
-                background: "transparent", border: `1px solid ${T.border}`,
-                color: T.inkMid, fontSize: 14, fontWeight: 500,
-                transition: "background 0.15s",
-              }}>Find Sources</button>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 36 }}>
+              {[
+                { label: "Citation Audit", desc: "5 agents · citations, jurisdiction, history, counter-authority", color: T.red, onClick: onVerify },
+                { label: "Persona Stress Test", desc: "Judge, regulator, opposing counsel — all at once", color: "#7c3aed", onClick: onPersonaTest },
+                { label: "Proposition Match", desc: "Monte Carlo confidence score across interpretive stances", color: "#4f46e5", onClick: onPropositionMatch },
+              ].map((item) => (
+                <button
+                  key={item.label}
+                  onClick={item.onClick}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 12, padding: "12px 16px",
+                    background: "#fff", border: `1px solid ${T.border}`, borderRadius: 8,
+                    cursor: "pointer", textAlign: "left", transition: "border-color 0.15s",
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = item.color; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = T.border; }}
+                >
+                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: item.color, flexShrink: 0 }} />
+                  <div>
+                    <p style={{ fontSize: 13, fontWeight: 700, color: T.ink }}>{item.label}</p>
+                    <p style={{ fontSize: 11, color: T.inkFaint }}>{item.desc}</p>
+                  </div>
+                  <span style={{ marginLeft: "auto", fontSize: 14, color: T.inkFaint }}>→</span>
+                </button>
+              ))}
             </div>
+
+            <button onClick={onFind} className="btn-ghost" style={{
+              padding: "10px 20px", borderRadius: 7, cursor: "pointer",
+              background: "transparent", border: `1px solid ${T.border}`,
+              color: T.inkFaint, fontSize: 13, fontWeight: 500,
+              transition: "background 0.15s",
+            }}>Find Sources for a topic</button>
           </div>
 
           <div style={{ animation: "fadeUp 0.5s ease 0.12s both" }}>
-            <DocPreview />
+            <HeroToolPreview
+              onVerify={onVerify}
+              onPersonaTest={onPersonaTest}
+              onPropositionMatch={onPropositionMatch}
+            />
           </div>
         </div>
       </section>
+
+      {/* ── Three tools detail ───────────────────────────────────────────────── */}
+      <ThreeTools onVerify={onVerify} onPersonaTest={onPersonaTest} onPropositionMatch={onPropositionMatch} />
 
       {/* ── Why RATIO ───────────────────────────────────────────────────────── */}
       <WhyRATIO />
@@ -550,31 +887,38 @@ export function LandingPage({ onVerify, onFind }: LandingPageProps) {
 
       {/* ── CTA ─────────────────────────────────────────────────────────────── */}
       <section style={{ padding: "80px 56px 100px", textAlign: "center", background: T.parchment }}>
-        <div style={{ maxWidth: 520, margin: "0 auto" }}>
+        <div style={{ maxWidth: 560, margin: "0 auto" }}>
           <p style={{
             fontFamily: "Georgia, serif",
             fontSize: "clamp(24px, 2.4vw, 36px)",
             fontWeight: 700, letterSpacing: "-0.02em",
             marginBottom: 16, lineHeight: 1.2,
           }}>
-            Three minutes to know<br />whether it is safe to send.
+            Audit. Stress-test. Verify.<br />
+            <span style={{ color: T.inkFaint }}>Three minutes. Every layer.</span>
           </p>
           <p style={{ fontSize: 15, color: T.inkMid, marginBottom: 36, lineHeight: 1.65 }}>
-            Paste your legal document and let five adversarial agents verify
-            every citation before it becomes a claim against you.
+            Paste your memo, upload a document, or test a proposition — RATIO covers
+            every dimension of legal review before it becomes a liability.
           </p>
-          <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+          <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
             <button onClick={onVerify} className="btn-primary" style={{
               padding: "14px 30px", borderRadius: 7, border: "none", cursor: "pointer",
               background: T.navyBtn, color: "#fff", fontSize: 14, fontWeight: 700,
               letterSpacing: "0.01em", transition: "background 0.15s, transform 0.15s",
             }}>Verify Citations →</button>
-            <button onClick={onFind} className="btn-ghost" style={{
+            <button onClick={onPersonaTest} className="btn-ghost" style={{
               padding: "14px 22px", borderRadius: 7, cursor: "pointer",
-              background: "transparent", border: `1px solid ${T.border}`,
-              color: T.inkMid, fontSize: 14, fontWeight: 500,
+              background: "transparent", border: `1px solid #ddd6fe`,
+              color: "#7c3aed", fontSize: 14, fontWeight: 600,
               transition: "background 0.15s",
-            }}>Find Sources</button>
+            }}>Run Stress Test</button>
+            <button onClick={onPropositionMatch} className="btn-ghost" style={{
+              padding: "14px 22px", borderRadius: 7, cursor: "pointer",
+              background: "transparent", border: `1px solid #c7d2fe`,
+              color: "#4f46e5", fontSize: 14, fontWeight: 600,
+              transition: "background 0.15s",
+            }}>Test a Proposition</button>
           </div>
         </div>
       </section>

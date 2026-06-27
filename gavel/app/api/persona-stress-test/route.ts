@@ -79,26 +79,57 @@ function buildClaimSummary(claimResults: ClaimResult[]): string {
   ).join("\n\n");
 }
 
+interface CustomPersona {
+  name: string;
+  role: string;
+  lens: string;
+}
+
 export async function POST(req: Request) {
-  const { claimResults }: { claimResults: ClaimResult[] } = await req.json();
+  const {
+    claimResults,
+    documentText,
+    customPersonas = [],
+  }: {
+    claimResults: ClaimResult[];
+    documentText?: string;
+    customPersonas?: CustomPersona[];
+  } = await req.json();
+
   const claimSummary = buildClaimSummary(claimResults);
 
+  // Build the review context — prefer document text when provided
+  const reviewContext = documentText?.trim()
+    ? `DOCUMENT UNDER REVIEW:\n\n${documentText.slice(0, 4000)}${documentText.length > 4000 ? "\n\n[Document truncated for length]" : ""}${claimResults.length > 0 ? `\n\n---\nAUDIT FINDINGS:\n\n${claimSummary}` : ""}`
+    : `AUDIT FINDINGS:\n\n${claimSummary}`;
+
+  // Merge standard + custom personas
+  const allPersonas = [
+    ...PERSONAS,
+    ...customPersonas.map((cp, i) => ({
+      id: `custom-${i}`,
+      name: cp.name,
+      role: cp.role,
+      lens: cp.lens,
+    })),
+  ];
+
   const results = await Promise.all(
-    PERSONAS.map(async (persona) => {
+    allPersonas.map(async (persona) => {
       const result = await generateObject({
         model: anthropic("claude-haiku-4-5-20251001"),
         schema: PersonaResultSchema,
         prompt: `${persona.lens}
 
-You are reviewing the following RATIO audit findings for a legal memorandum:
+You are reviewing the following legal material:
 
-${claimSummary}
+${reviewContext}
 
-Based solely on these audit findings, respond as ${persona.role}.
+Based on this material, respond as ${persona.role}.
 
 Your verdict must be one of: PASSES (you have no significant objections), RAISES CONCERNS (there are issues that must be addressed), or REJECTS (this memo should not be sent or relied upon in its current state).
 
-Keep your quote short and sharp, in character. Your concerns should be specific to what the audit found — not generic.`,
+Keep your quote short and sharp, in character. Your concerns should be specific to what you found — not generic.`,
       });
       return {
         id: persona.id,

@@ -17,44 +17,64 @@ function findStr(doc: string, needle: string, from = 0): { start: number; end: n
 // ── Find just the citation reference (article/regulation) ──
 
 function findCitation(docText: string, r: ClaimResult): { start: number; end: number } | null {
-  const article = (r.claim.article ?? "").trim();
+  const article    = (r.claim.article    ?? "").trim();
   const regulation = (r.claim.regulation ?? "").trim();
 
-  // 1. Regulation + article together (e.g. "CDPA 1988 s11(2)")
+  // 1. Regulation + article together (e.g. "Companies Act 2006 s.859A")
   if (regulation && article) {
     const p = findStr(docText, `${regulation} ${article}`);
     if (p) return p;
   }
 
-  // 2. Article alone — try exact, then with/without space after leading letter
-  if (article) {
-    const p = findStr(docText, article);
-    if (p) return p;
-    // "s11(2)" → "s 11(2)" variant
-    const spaced = article.replace(/^([a-zA-Z])(\d)/, "$1 $2");
-    if (spaced !== article) {
-      const p2 = findStr(docText, spaced);
-      if (p2) return p2;
-    }
-    // "s 11(2)" → "s11(2)" (remove spurious space)
-    const unspaced = article.replace(/^([a-zA-Z]) (\d)/, "$1$2");
-    if (unspaced !== article) {
-      const p3 = findStr(docText, unspaced);
-      if (p3) return p3;
+  // 2. Article alone — multiple formatting variants
+  if (article && article.toLowerCase() !== "case law" && article.toLowerCase() !== "common law") {
+    const variants = [
+      article,
+      article.replace(/^([a-zA-Z])(\d)/, "$1 $2"),       // s11 → s 11
+      article.replace(/^([a-zA-Z]) (\d)/, "$1$2"),        // s 11 → s11
+      article.replace(/^(ss?)\.\s*/i, "s."),              // ss. → s.
+      article.replace(/^(ss?)\s+/i, "s"),                 // ss 859 → s859
+      // split "ss.859A and 859H" → try just "859A"
+      ...article.split(/\s+and\s+/i).map((p) => p.trim()),
+      // strip leading "ss." / "s." / "art." prefix for bare number search
+      article.replace(/^(ss?\.|art\.|reg\.|sch\.?|para\.?)\s*/i, ""),
+    ];
+    for (const v of variants) {
+      if (!v || v.toLowerCase() === article.toLowerCase() && v === article) {
+        // try original first below
+      }
+      const p = findStr(docText, v);
+      if (p) return p;
     }
   }
 
-  // 3. Regulation alone
-  if (regulation) {
+  // 3. Regulation alone (skip generic strings)
+  const genericRegex = /^(case law|common law|statute|regulation|legislation)$/i;
+  if (regulation && !genericRegex.test(regulation)) {
     const p = findStr(docText, regulation);
     if (p) return p;
+    // Try shortened form e.g. "Insolvency Act 1986" → "Insolvency Act"
+    const shortened = regulation.replace(/\s+\d{4}$/, "");
+    if (shortened !== regulation) {
+      const p2 = findStr(docText, shortened);
+      if (p2) return p2;
+    }
   }
 
-  // 4. Any 4+ consecutive words from the claim text
+  // 4. Any 4+ consecutive words from the claim text (longest match first)
   const words = r.claim.text.split(/\s+/).filter((w) => w.length > 3);
-  for (let win = Math.min(5, words.length); win >= 3; win--) {
+  for (let win = Math.min(6, words.length); win >= 4; win--) {
     for (let s = 0; s + win <= words.length; s++) {
       const phrase = words.slice(s, s + win).join(" ");
+      const p = findStr(docText, phrase);
+      if (p) return p;
+    }
+  }
+
+  // 5. Try 3-word windows as last resort
+  for (let s = 0; s + 3 <= words.length; s++) {
+    const phrase = words.slice(s, s + 3).join(" ");
+    if (phrase.length > 12) { // avoid matching trivially short phrases
       const p = findStr(docText, phrase);
       if (p) return p;
     }
@@ -138,6 +158,7 @@ const C = {
 interface PopupState {
   claimIndex: number;
   rect: DOMRect;
+  fromSidebar?: boolean; // anchor differently when triggered from sidebar
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -198,13 +219,21 @@ export function VerificationStepper({
   const kept = decisions.filter((d) => d === "kept").length;
   const pending = decisions.filter((d) => d === "pending").length;
 
-  // Compute popup position
+  // Compute popup position — sidebar items anchor to their left edge, doc spans anchor above
   let popupLeft = 0;
   let popupTop = 0;
+  let popupTransform = "translateY(-100%)";
   if (popup) {
-    const w = 300;
-    popupLeft = Math.min(Math.max(popup.rect.left, 8), window.innerWidth - w - 8);
-    popupTop = popup.rect.top - 8; // will move upward via transform
+    const w = 310;
+    if (popup.fromSidebar) {
+      // Anchor to the left of the sidebar
+      popupLeft = Math.max(popup.rect.left - w - 8, 8);
+      popupTop  = Math.max(popup.rect.top, 8);
+      popupTransform = "none";
+    } else {
+      popupLeft = Math.min(Math.max(popup.rect.left, 8), window.innerWidth - w - 8);
+      popupTop  = popup.rect.top - 8;
+    }
   }
 
   const activeResult = popup ? claimResults[popup.claimIndex] : null;
@@ -222,8 +251,8 @@ export function VerificationStepper({
             position: "fixed",
             left: popupLeft,
             top: popupTop,
-            transform: "translateY(-100%)",
-            width: 300,
+            transform: popupTransform,
+            width: 310,
             zIndex: 9999,
             background: "#fff",
             border: "1px solid #e2e8f0",
@@ -252,6 +281,25 @@ export function VerificationStepper({
             <span style={{ fontSize: 11, color: "#94a3b8", marginLeft: "auto" }}>
               {activeResult.score}/100
             </span>
+          </div>
+
+          {/* Regulation + article label */}
+          <div style={{ marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
+            {activeResult.claim.regulation && (
+              <span style={{ fontSize: 10, fontFamily: "monospace", color: "#64748b", background: "#f1f5f9", borderRadius: 4, padding: "1px 6px" }}>
+                {activeResult.claim.regulation}
+              </span>
+            )}
+            {activeResult.claim.article && (
+              <span style={{ fontSize: 10, fontFamily: "monospace", color: "#64748b" }}>
+                {activeResult.claim.article}
+              </span>
+            )}
+            {!segments.some((s) => s.claimIndex === popup.claimIndex) && (
+              <span style={{ fontSize: 9, color: "#94a3b8", fontStyle: "italic", marginLeft: "auto" }}>
+                inferred — not found in text
+              </span>
+            )}
           </div>
 
           {/* Detail */}
@@ -364,25 +412,38 @@ export function VerificationStepper({
             const col = C[f.sev];
             const dec = decisions[i];
             const isActive = popup?.claimIndex === i;
+            const foundInDoc = segments.some((s) => s.claimIndex === i);
             return (
               <button
                 key={i}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (popup?.claimIndex === i) { setPopup(null); setShowFix(false); return; }
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  setPopup({ claimIndex: i, rect, fromSidebar: true });
+                  setShowFix(false);
+                }}
                 className={`w-full flex items-center gap-2 px-4 py-2 text-left hover:bg-slate-50 transition-all ${isActive ? "bg-slate-50" : ""}`}
               >
                 <span
                   className="shrink-0 w-1.5 h-1.5 rounded-full"
                   style={{ backgroundColor: dec === "skipped" ? "#d1d5db" : col.underline }}
                 />
-                <span
-                  className="text-[11px] truncate"
-                  style={{
-                    color: dec === "skipped" ? "#d1d5db" : "#374151",
-                    textDecoration: dec === "skipped" ? "line-through" : "none",
-                  }}
-                >
-                  {r.claim.article || r.claim.regulation}
-                </span>
-                {dec === "kept" && <span className="text-green-500 text-[10px] ml-auto shrink-0">✓</span>}
+                <div className="flex-1 min-w-0">
+                  <span
+                    className="text-[11px] block truncate"
+                    style={{
+                      color: dec === "skipped" ? "#d1d5db" : "#374151",
+                      textDecoration: dec === "skipped" ? "line-through" : "none",
+                    }}
+                  >
+                    {r.claim.article || r.claim.regulation}
+                  </span>
+                  {!foundInDoc && dec !== "skipped" && (
+                    <span className="text-[9px] text-slate-300">inferred · not in text</span>
+                  )}
+                </div>
+                {dec === "kept" && <span className="text-green-500 text-[10px] shrink-0">✓</span>}
               </button>
             );
           })}

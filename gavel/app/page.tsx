@@ -5,8 +5,10 @@ import { DefaultChatTransport, lastAssistantMessageIsCompleteWithToolCalls } fro
 import { useEffect, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import { AgentGraph } from "./AgentGraph";
+import { CitationSearchVisual } from "./CitationSearchVisual";
 import { Neo4jGraph } from "./Neo4jGraph";
 import { PersonaStressTestPanel } from "./PersonaStressTestPanel";
+import { PropositionMatchPanel } from "./PropositionMatchPanel";
 import { VerificationStepper } from "./VerificationStepper";
 import { AuditStory } from "./AuditStory";
 import { LandingPage } from "./LandingPage";
@@ -14,7 +16,7 @@ import type { ClaimResult, GeneratedCitation } from "@/lib/types";
 
 // ─── Phase / Mode ─────────────────────────────────────────────────────────────
 
-type Phase = "mode-select" | "setup" | "running" | "review" | "done";
+type Phase = "mode-select" | "setup" | "running" | "review" | "done" | "persona-standalone" | "proposition-standalone";
 type Mode = "generate" | "verify";
 
 // ─── Human-readable agent progress steps ─────────────────────────────────────
@@ -464,16 +466,39 @@ function findInDoc(docText: string, article: string, regulation: string): { star
 }
 
 type RunSegState = "plain" | "active" | "done-good" | "done-warn" | "done-bad";
-interface RunSeg { text: string; state: RunSegState }
+interface RunSeg {
+  text: string;
+  state: RunSegState;
+  badge?: { label: string; type: "red" | "amb" | "green" };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function pickBadge(output: any): { label: string; type: "red" | "amb" | "green" } {
+  const sourcer   = output?.sourcer?.status as string | undefined;
+  const jurisd    = output?.jurisdictionist?.status as string | undefined;
+  const historian = output?.historian?.status as string | undefined;
+  const devil     = output?.devils_advocate?.strength as string | undefined;
+  const memory    = output?.firm_memory?.status as string | undefined;
+
+  if (sourcer === "NOT_FOUND")              return { label: "NOT FOUND",          type: "red" };
+  if (jurisd  === "WRONG_JURISDICTION")     return { label: "WRONG JURISDICTION",  type: "red" };
+  if (memory  === "CONTRADICTION_FOUND")    return { label: "CONTRADICTION",        type: "red" };
+  if (devil   === "high")                   return { label: "HIGH RISK",            type: "red" };
+  if (historian === "AMENDED")              return { label: "AMENDED",              type: "amb" };
+  if (jurisd  === "UNCLEAR")                return { label: "UNCLEAR",              type: "amb" };
+  if (sourcer === "INFERRED")               return { label: "INFERRED",             type: "amb" };
+  if (devil   === "medium")                 return { label: "MEDIUM RISK",          type: "amb" };
+  return { label: "VERIFIED", type: "green" };
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function buildRunSegs(docText: string, toolParts: any[]): RunSeg[] {
-  // Completed claims with scores
+  // Completed claims with scores + full output for badge
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const completed = toolParts
     .filter((p) => p.type === "tool-reportClaim" && p.state === "output-available" && p.output?.claim)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    .map((p: any) => ({ claim: p.output.claim, score: p.output.score as number }));
+    .map((p: any) => ({ claim: p.output.claim, score: p.output.score as number, output: p.output }));
 
   // Active claims (sourcer or jurisdictionist in flight)
   const activeIds = new Set<string>();
@@ -494,14 +519,14 @@ function buildRunSegs(docText: string, toolParts: any[]): RunSeg[] {
       if (!activeIds.has(id)) { activeIds.add(id); activeClaims.push(c); }
     });
 
-  type Span = { start: number; end: number; state: RunSegState };
+  type Span = { start: number; end: number; state: RunSegState; badge?: RunSeg["badge"] };
   const spans: Span[] = [];
 
   for (const item of completed) {
     const pos = findInDoc(docText, item.claim.article ?? "", item.claim.regulation ?? "");
     if (pos) {
       const st: RunSegState = item.score >= 70 ? "done-good" : item.score >= 40 ? "done-warn" : "done-bad";
-      spans.push({ ...pos, state: st });
+      spans.push({ ...pos, state: st, badge: pickBadge(item.output) });
     }
   }
   for (const claim of activeClaims) {
@@ -522,7 +547,7 @@ function buildRunSegs(docText: string, toolParts: any[]): RunSeg[] {
   let cur = 0;
   for (const sp of clean) {
     if (sp.start > cur) segs.push({ text: docText.slice(cur, sp.start), state: "plain" });
-    segs.push({ text: docText.slice(sp.start, sp.end), state: sp.state });
+    segs.push({ text: docText.slice(sp.start, sp.end), state: sp.state, badge: sp.badge });
     cur = sp.end;
   }
   if (cur < docText.length) segs.push({ text: docText.slice(cur), state: "plain" });
@@ -534,6 +559,18 @@ function RunningDocPanel({ docText, toolParts }: { docText: string; toolParts: a
   const segs = buildRunSegs(docText, toolParts);
   const hasActive = segs.some((s) => s.state === "active");
 
+  const BADGE_STYLE = {
+    red:   { bg: "#fef2f2", color: "#c41e1e", border: "#fca5a5" },
+    amb:   { bg: "#fffbeb", color: "#854d0e", border: "#fde68a" },
+    green: { bg: "#f0fdf4", color: "#15803d", border: "#bbf7d0" },
+  };
+
+  const HIGHLIGHT_BG = {
+    "done-good": "#f0fdf4",
+    "done-warn": "#fffbeb",
+    "done-bad":  "#fef2f2",
+  };
+
   return (
     <div className="flex-1 overflow-y-auto bg-white" style={{ padding: "48px 56px 72px" }}>
       <style>{`
@@ -544,6 +581,10 @@ function RunningDocPanel({ docText, toolParts }: { docText: string; toolParts: a
         @keyframes dotPulse {
           0%, 100% { opacity: 1; transform: scale(1); }
           50%       { opacity: 0.35; transform: scale(0.65); }
+        }
+        @keyframes tagIn {
+          from { opacity: 0; transform: scale(0.8) translateY(-2px); }
+          to   { opacity: 1; transform: scale(1) translateY(0); }
         }
       `}</style>
 
@@ -574,37 +615,61 @@ function RunningDocPanel({ docText, toolParts }: { docText: string; toolParts: a
 
           if (seg.state === "active") {
             return (
-              <span
-                key={i}
-                style={{
-                  borderRadius: 3,
-                  padding: "1px 2px",
+              <span key={i}>
+                <span style={{
+                  borderRadius: 3, padding: "1px 3px",
                   animation: "activePulse 1.4s ease-in-out infinite",
-                  cursor: "default",
                   outline: "1.5px solid #93c5fd",
-                }}
-              >
-                {seg.text}
+                }}>
+                  {seg.text}
+                </span>
+                <span style={{
+                  display: "inline-flex", alignItems: "center", gap: 3,
+                  fontSize: 9, fontWeight: 700,
+                  padding: "2px 6px", borderRadius: 3,
+                  background: "#eff6ff", color: "#1d4ed8",
+                  border: "1px solid #bfdbfe",
+                  marginLeft: 6, verticalAlign: "middle",
+                  letterSpacing: "0.05em", fontFamily: "system-ui, sans-serif",
+                  animation: "dotPulse 1.2s ease-in-out infinite",
+                }}>
+                  <span style={{ width: 4, height: 4, borderRadius: "50%", background: "#3b82f6", display: "inline-block" }} />
+                  SCANNING
+                </span>
               </span>
             );
           }
 
-          const uc =
-            seg.state === "done-good" ? "#22c55e"
-            : seg.state === "done-warn" ? "#f59e0b"
-            : "#ef4444";
+          const bg = HIGHLIGHT_BG[seg.state as keyof typeof HIGHLIGHT_BG];
+          const uc = seg.state === "done-good" ? "#22c55e" : seg.state === "done-warn" ? "#f59e0b" : "#ef4444";
+          const bs = seg.badge ? BADGE_STYLE[seg.badge.type] : null;
+
           return (
-            <span
-              key={i}
-              style={{
+            <span key={i}>
+              <span style={{
+                backgroundColor: bg,
+                borderRadius: 3, padding: "1px 3px",
                 textDecoration: "underline",
                 textDecorationStyle: "wavy",
                 textDecorationColor: uc,
                 textDecorationThickness: "2px",
-                padding: "0 1px",
-              }}
-            >
-              {seg.text}
+              }}>
+                {seg.text}
+              </span>
+              {bs && seg.badge && (
+                <span style={{
+                  display: "inline-block",
+                  fontSize: 9, fontWeight: 700,
+                  padding: "2px 7px", borderRadius: 3,
+                  background: bs.bg, color: bs.color,
+                  border: `1px solid ${bs.border}`,
+                  marginLeft: 6, verticalAlign: "middle",
+                  letterSpacing: "0.05em", fontFamily: "system-ui, sans-serif",
+                  animation: "tagIn 0.3s ease both",
+                }}>
+                  {seg.badge.label}
+                </span>
+              )}
             </span>
           );
         })}
@@ -845,7 +910,7 @@ export default function HomePage() {
   const [citations, setCitations] = useState<GeneratedCitation[]>([]);
   const [enrichedDoc, setEnrichedDoc] = useState("");
   const [keptResults, setKeptResults] = useState<ClaimResult[]>([]);
-  const [doneTab, setDoneTab] = useState<"document" | "simulation">("document");
+  const [doneTab, setDoneTab] = useState<"document" | "simulation" | "proposition">("document");
   const [rightTab, setRightTab] = useState<"story" | "graph">("story");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -999,11 +1064,60 @@ export default function HomePage() {
 
   // ── Mode select ──────────────────────────────────────────────────────────────
 
+  if (phase === "persona-standalone") {
+    return (
+      <main className="min-h-screen flex flex-col" style={{ backgroundColor: "#f7f6f3" }}>
+        <header className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setPhase("mode-select")}
+              className="text-xs text-slate-400 hover:text-slate-600 transition-colors"
+            >
+              ← Back
+            </button>
+            <span style={{ fontFamily: "Georgia, serif", fontSize: 16, fontWeight: 800, letterSpacing: "0.08em", color: "#0d0d0d" }}>RATIO</span>
+            <span className="text-sm text-slate-400">Scenario Stress Test</span>
+          </div>
+        </header>
+        <div className="flex-1 overflow-hidden">
+          <PersonaStressTestPanel claimResults={[]} />
+        </div>
+      </main>
+    );
+  }
+
+  if (phase === "proposition-standalone") {
+    return (
+      <main className="min-h-screen flex flex-col" style={{ backgroundColor: "#f7f6f3" }}>
+        <header className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setPhase("mode-select")}
+              className="text-xs text-slate-400 hover:text-slate-600 transition-colors"
+            >
+              ← Back
+            </button>
+            <span style={{ fontFamily: "Georgia, serif", fontSize: 16, fontWeight: 800, letterSpacing: "0.08em", color: "#0d0d0d" }}>RATIO</span>
+            <span className="text-sm text-slate-400">Monte Carlo Proposition Match</span>
+          </div>
+          <span className="text-[10px] font-semibold text-indigo-600 bg-indigo-50 border border-indigo-100 rounded px-2 py-1 uppercase tracking-wider">
+            Powered by Nemotron
+          </span>
+        </header>
+        <div className="flex-1 overflow-hidden">
+          <PropositionMatchPanel claimResults={[]} />
+        </div>
+      </main>
+    );
+  }
+
   if (phase === "mode-select") {
     return (
       <LandingPage
         onVerify={() => { setMode("verify"); setPhase("setup"); }}
         onFind={() => { setMode("generate"); setPhase("setup"); }}
+        onPersonaTest={() => setPhase("persona-standalone")}
+        onPropositionMatch={() => setPhase("proposition-standalone")}
       />
     );
   }
@@ -1014,6 +1128,11 @@ export default function HomePage() {
     const isGenerate = mode === "generate";
     const hasCitations = citations.length > 0;
     const canProceed = docText.trim().length > 20;
+
+    // Full-screen crawl visual while searching for sources
+    if (isGenerate && citationLoading) {
+      return <CitationSearchVisual />;
+    }
 
     // ── Citation results — full-page two-column layout ──────────────────────────
     if (hasCitations) {
@@ -1529,7 +1648,7 @@ export default function HomePage() {
 
       {/* Tabs */}
       <div className="bg-white border-b border-slate-200 px-6 flex items-center gap-1 shrink-0">
-        {(["document", "simulation"] as const).map((t) => (
+        {(["document", "simulation", "proposition"] as const).map((t) => (
           <button
             key={t}
             onClick={() => setDoneTab(t)}
@@ -1537,7 +1656,7 @@ export default function HomePage() {
               doneTab === t ? "text-slate-900" : "text-slate-400 hover:text-slate-600"
             }`}
           >
-            {t === "document" ? "Verification Report" : "Persona Stress Test"}
+            {t === "document" ? "Verification Report" : t === "simulation" ? "Persona Stress Test" : "Proposition Match"}
             {doneTab === t && <span className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full" style={{ backgroundColor: "#1c3461" }} />}
           </button>
         ))}
@@ -1555,6 +1674,11 @@ export default function HomePage() {
         {doneTab === "simulation" && (
           <div className="flex-1 overflow-hidden">
             <PersonaStressTestPanel claimResults={keptResults.length > 0 ? keptResults : claimResults} />
+          </div>
+        )}
+        {doneTab === "proposition" && (
+          <div className="flex-1 overflow-hidden">
+            <PropositionMatchPanel claimResults={keptResults.length > 0 ? keptResults : claimResults} />
           </div>
         )}
       </div>
