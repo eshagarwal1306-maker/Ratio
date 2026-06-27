@@ -64,32 +64,27 @@ const CITATION_TYPE_LABEL: Record<string, string> = {
 
 // ─── Source URL generation ────────────────────────────────────────────────────
 
-const EU_REGS = /DORA|MiFID|GDPR|AIFMD|CRR|MAR|SFDR|EMIR|PRIIPS|UCITS|BRRD|SRMR|ESMA|EBA\//i;
+const EU_REGS = /DORA|MiFID|GDPR|AIFMD|CRR|MAR|SFDR|EMIR|PRIIPS|UCITS|BRRD|SRMR|ESMA|EBA\b/i;
 
+// Use Google site: searches — always resolves, routes to the authoritative database
 function getSourceLink(type: string, reference: string, title: string): string {
-  const q = encodeURIComponent((reference || title).trim());
+  const base = (reference || title).trim();
+  if (!base) return `https://scholar.google.com/scholar?q=legal+citation`;
+
   if (type === "legislation") {
-    return EU_REGS.test(reference + title)
-      ? `https://eur-lex.europa.eu/search.html?scope=EURLEX&text=${q}&type=quick&lang=en`
-      : `https://www.legislation.gov.uk/search?title=${q}`;
+    const site = EU_REGS.test(reference + title) ? "eur-lex.europa.eu" : "legislation.gov.uk";
+    return `https://www.google.com/search?q=${encodeURIComponent(`${base} site:${site}`)}`;
   }
   if (type === "case_law") {
-    return `https://www.bailii.org/cgi-bin/bailey.cgi?Action=search&Query=${q}`;
+    return `https://www.google.com/search?q=${encodeURIComponent(`${base} site:bailii.org`)}`;
   }
-  if (type === "academic") {
-    return `https://scholar.google.com/scholar?q=${q}`;
-  }
-  return `https://scholar.google.com/scholar?q=${q}`;
+  return `https://scholar.google.com/scholar?q=${encodeURIComponent(base)}`;
 }
 
-// Derive source link from claim regulation/article
+// Link from a regulation + article to its authoritative source
 function getRegulationLink(regulation: string, article: string): string {
   const ref = [regulation, article].filter(Boolean).join(" ");
-  return getSourceLink(
-    EU_REGS.test(regulation) ? "legislation" : "legislation",
-    ref,
-    ref,
-  );
+  return getSourceLink("legislation", ref, ref);
 }
 
 // ─── Shared UI components ─────────────────────────────────────────────────────
