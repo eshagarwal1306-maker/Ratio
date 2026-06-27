@@ -160,32 +160,60 @@ export function Neo4jGraph({ isRunning }: { isRunning: boolean }) {
     }
   }, []);
 
-  // Link canvas painter — animated dashed lines for active edges
+  // Link canvas painter — animated dashed lines for active edges, solid for done
   const paintLink = useCallback((link: GLink, ctx: CanvasRenderingContext2D) => {
     const src = link.source as GNode;
     const tgt = link.target as GNode;
-    if (!src?.x || !tgt?.x) return;
+    // source/target can still be string IDs before force-sim resolves them
+    if (typeof src === "string" || typeof tgt === "string") return;
+    if (src.x === undefined || tgt.x === undefined) return;
 
     const isActive = tgt.state === "active";
     const color = tgt.color ?? "#6e6e8a";
+    const sx = src.x!; const sy = src.y!;
+    const tx = tgt.x!; const ty = tgt.y!;
 
+    ctx.save();
     ctx.beginPath();
-    ctx.moveTo(src.x, src.y!);
-    ctx.lineTo(tgt.x, tgt.y!);
+    ctx.moveTo(sx, sy);
+    ctx.lineTo(tx, ty);
 
     if (isActive) {
       const offset = (Date.now() / 20) % 20;
       ctx.setLineDash([5, 8]);
       ctx.lineDashOffset = -offset;
-      ctx.strokeStyle = color + "cc";
-      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 6;
     } else {
       ctx.setLineDash([]);
-      ctx.strokeStyle = color + "44";
-      ctx.lineWidth = 1;
+      ctx.strokeStyle = color + "70";
+      ctx.lineWidth = 1.5;
     }
     ctx.stroke();
+
+    // Draw arrowhead at target end
+    const dx = tx - sx;
+    const dy = ty - sy;
+    const angle = Math.atan2(dy, dx);
+    const targetR = (tgt.size ?? 8) + 3;
+    const ax = tx - Math.cos(angle) * targetR;
+    const ay = ty - Math.sin(angle) * targetR;
+    const arrLen = 7;
+    const arrSpread = 0.45;
+
     ctx.setLineDash([]);
+    ctx.shadowBlur = 0;
+    ctx.beginPath();
+    ctx.moveTo(ax, ay);
+    ctx.lineTo(ax - arrLen * Math.cos(angle - arrSpread), ay - arrLen * Math.sin(angle - arrSpread));
+    ctx.lineTo(ax - arrLen * Math.cos(angle + arrSpread), ay - arrLen * Math.sin(angle + arrSpread));
+    ctx.closePath();
+    ctx.fillStyle = isActive ? color : color + "70";
+    ctx.fill();
+
+    ctx.restore();
   }, []);
 
   const handleNodeHover = useCallback((node: GNode | null, evt?: MouseEvent) => {
@@ -216,12 +244,9 @@ export function Neo4jGraph({ isRunning }: { isRunning: boolean }) {
         linkCanvasObjectMode={() => "replace"}
         onNodeHover={handleNodeHover as any}
         nodeLabel=""
-        cooldownTicks={120}
-        d3AlphaDecay={0.02}
-        d3VelocityDecay={0.4}
-        linkDirectionalArrowLength={5}
-        linkDirectionalArrowRelPos={1}
-        linkDirectionalArrowColor={(link: any) => (link?.target?.color ?? "#6e6e8a") + "88"}
+        cooldownTicks={150}
+        d3AlphaDecay={0.015}
+        d3VelocityDecay={0.35}
       />
 
       {/* Tooltip */}
