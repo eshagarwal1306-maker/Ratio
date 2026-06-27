@@ -111,35 +111,201 @@ function StatusDot({ verdict }: { verdict: string }) {
   );
 }
 
+// ─── Firecrawl source preview ─────────────────────────────────────────────────
+
+interface VerifiedSource {
+  url: string;
+  domain: string;
+  title: string;
+  snippet: string;
+  favicon?: string;
+}
+
+function SourcePreviewPanel({ cit }: { cit: GeneratedCitation }) {
+  const [state, setState] = useState<"idle" | "loading" | "found" | "not-found">("idle");
+  const [source, setSource] = useState<VerifiedSource | null>(null);
+  const [progress, setProgress] = useState(0);
+
+  async function findSource() {
+    if (state !== "idle") return;
+    setState("loading");
+    setProgress(0);
+
+    const intervalId = setInterval(() => {
+      setProgress((p) => {
+        if (p >= 88) { clearInterval(intervalId); return p; }
+        return p + Math.random() * 10;
+      });
+    }, 350);
+
+    try {
+      const res = await fetch("/api/verify-source", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: cit.title, reference: cit.reference, type: cit.type }),
+      });
+      const data = await res.json();
+      clearInterval(intervalId);
+      setProgress(100);
+      setTimeout(() => {
+        if (data.found) { setSource(data); setState("found"); }
+        else setState("not-found");
+      }, 250);
+    } catch {
+      clearInterval(intervalId);
+      setState("not-found");
+    }
+  }
+
+  const expectedDomain =
+    cit.type === "case_law" ? "bailii.org"
+    : /DORA|MiFID|GDPR|AIFMD|CRR|SFDR|EMIR/i.test(cit.reference + cit.title)
+      ? "eur-lex.europa.eu"
+      : "legislation.gov.uk";
+
+  if (state === "idle") {
+    return (
+      <button
+        onClick={findSource}
+        style={{
+          marginTop: 8, fontSize: 11, fontWeight: 600,
+          color: "#3b82f6", background: "none", border: "none",
+          cursor: "pointer", padding: 0,
+          display: "flex", alignItems: "center", gap: 4,
+        }}
+      >
+        <span style={{ fontSize: 13 }}>⊕</span> Find live source
+      </button>
+    );
+  }
+
+  return (
+    <div style={{
+      marginTop: 10, border: "1px solid #e5e7eb",
+      borderRadius: 8, overflow: "hidden", animation: "fadeUp 0.2s ease",
+    }}>
+      {/* Browser chrome */}
+      <div style={{
+        background: "#f3f4f6", padding: "6px 10px",
+        display: "flex", alignItems: "center", gap: 8,
+      }}>
+        {/* Traffic lights */}
+        <div style={{ display: "flex", gap: 3, flexShrink: 0 }}>
+          {["#ef4444", "#f59e0b", "#22c55e"].map((c) => (
+            <div key={c} style={{ width: 7, height: 7, borderRadius: "50%", background: c }} />
+          ))}
+        </div>
+        {/* URL / address bar */}
+        <div style={{
+          flex: 1, background: "white", borderRadius: 4,
+          padding: "3px 8px", fontSize: 10, color: "#374151",
+          border: "1px solid #e5e7eb",
+          overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis",
+          display: "flex", alignItems: "center", gap: 4,
+        }}>
+          {state === "loading" ? (
+            <span style={{ color: "#9ca3af", fontStyle: "italic" }}>
+              Searching {expectedDomain}…
+            </span>
+          ) : state === "found" && source ? (
+            <>
+              <span style={{ color: "#16a34a", fontSize: 11 }}>🔒</span>
+              <span style={{ color: "#1d4ed8", overflow: "hidden", textOverflow: "ellipsis" }}>
+                {source.url}
+              </span>
+            </>
+          ) : (
+            <span style={{ color: "#9ca3af" }}>Source not found on public databases</span>
+          )}
+        </div>
+        {state === "found" && source && (
+          <a href={source.url} target="_blank" rel="noopener noreferrer"
+            style={{ fontSize: 12, color: "#3b82f6", flexShrink: 0, fontWeight: 700 }}>
+            ↗
+          </a>
+        )}
+      </div>
+
+      {/* Progress bar */}
+      <div style={{ height: 2, background: "#e5e7eb" }}>
+        <div style={{
+          height: 2,
+          background: state === "found" ? "#22c55e" : "linear-gradient(90deg, #3b82f6, #60a5fa)",
+          width: state === "loading" ? `${Math.min(progress, 100)}%` : state === "found" ? "100%" : "0%",
+          transition: "width 0.35s ease, background 0.3s ease",
+          borderRadius: "0 2px 2px 0",
+        }} />
+      </div>
+
+      {/* Page content */}
+      <div style={{ background: "white", padding: "10px 14px", maxHeight: 200, overflowY: "auto" }}>
+        {state === "loading" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {[80, 65, 75, 50, 60, 42].map((w, i) => (
+              <div key={i} style={{
+                height: 8, borderRadius: 4, background: "#f3f4f6", width: `${w}%`,
+                animation: `skelPulse 1.4s ease-in-out ${i * 0.1}s infinite`,
+              }} />
+            ))}
+          </div>
+        )}
+        {state === "found" && source && (
+          <div>
+            {source.title && source.title !== cit.title && (
+              <p style={{ fontSize: 11, fontWeight: 700, color: "#111827", marginBottom: 6 }}>
+                {source.title}
+              </p>
+            )}
+            <p style={{ fontSize: 11, color: "#4b5563", lineHeight: 1.7, margin: 0, whiteSpace: "pre-wrap" }}>
+              {source.snippet}
+            </p>
+          </div>
+        )}
+        {state === "not-found" && (
+          <p style={{ fontSize: 11, color: "#9ca3af", fontStyle: "italic", margin: 0 }}>
+            Not found on public legal databases. The source may require a subscription or be unpublished.
+          </p>
+        )}
+      </div>
+
+      {/* Footer */}
+      {state === "found" && source && (
+        <div style={{
+          background: "#f9fafb", padding: "5px 12px",
+          borderTop: "1px solid #f3f4f6",
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+        }}>
+          <span style={{ fontSize: 10, color: "#9ca3af" }}>via {source.domain}</span>
+          <a href={source.url} target="_blank" rel="noopener noreferrer"
+            style={{ fontSize: 10, color: "#3b82f6", fontWeight: 600 }}>
+            Open full page →
+          </a>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CitationRow({ cit, index }: { cit: GeneratedCitation; index: number }) {
   const color = CITATION_TYPE_COLOR[cit.type] ?? "#64748b";
   const label = CITATION_TYPE_LABEL[cit.type] ?? cit.type;
-  const sourceUrl = getSourceLink(cit.type, cit.reference, cit.title);
   return (
-    <div className="flex gap-4 py-5 border-b border-slate-100 group">
-      <span className="text-xs text-slate-300 font-mono pt-0.5 w-5 shrink-0 text-right select-none">
-        {index + 1}
-      </span>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-start justify-between gap-3">
+    <div className="py-5 border-b border-slate-100">
+      <div className="flex gap-4">
+        <span className="text-xs text-slate-300 font-mono pt-0.5 w-5 shrink-0 text-right select-none">
+          {index + 1}
+        </span>
+        <div className="flex-1 min-w-0">
           <p className="text-[14px] font-semibold text-slate-900 leading-snug mb-1">{cit.title}</p>
-          <a
-            href={sourceUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="shrink-0 text-[11px] font-semibold text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity hover:underline"
-            onClick={e => e.stopPropagation()}
-          >
-            View source →
-          </a>
-        </div>
-        <p className="text-[11px] font-mono text-slate-400 mb-2">{cit.reference}</p>
-        <div className="flex items-center gap-2.5">
-          <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color }}>
-            {label}
-          </span>
-          <span className="text-slate-200">·</span>
-          <span className="text-[12px] text-slate-500 truncate">{cit.relevance}</span>
+          <p className="text-[11px] font-mono text-slate-400 mb-2">{cit.reference}</p>
+          <div className="flex items-center gap-2.5 mb-0.5">
+            <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color }}>
+              {label}
+            </span>
+            <span className="text-slate-200">·</span>
+            <span className="text-[12px] text-slate-500">{cit.relevance}</span>
+          </div>
+          <SourcePreviewPanel cit={cit} />
         </div>
       </div>
     </div>
