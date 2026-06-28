@@ -3,7 +3,7 @@ import { generateText, Output } from "ai";
 import { z } from "zod";
 import { ClaimSchema, type Claim } from "./schemas";
 
-const MAX_CLAIMS = 8;
+const MAX_CLAIMS = 3;
 
 export async function extractClaims(documentText: string): Promise<Claim[]> {
   const { output } = await generateText({
@@ -11,7 +11,7 @@ export async function extractClaims(documentText: string): Promise<Claim[]> {
     output: Output.array({ element: ClaimSchema }),
     instructions:
       "You are a legal document analyst. Extract the most legally significant verifiable claims from the document — statements that cite a specific law, regulation, article, or case as authority.",
-    prompt: `Extract the ${MAX_CLAIMS} most legally significant verifiable claims from this document.
+    prompt: `Extract the ${MAX_CLAIMS} most legally significant verifiable claims from this document. Only ${MAX_CLAIMS} — pick the highest-risk ones.
 
 A legal claim = a statement citing a specific law, regulation, or case as authority.
 

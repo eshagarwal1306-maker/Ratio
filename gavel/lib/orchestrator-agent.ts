@@ -29,17 +29,11 @@ SPEED IS CRITICAL. You must audit claims as fast as possible. Follow this exact 
 
 STEP 1: Call extractClaims once to get the list of claims (already capped to the 8 most important).
 
-STEP 2: For EVERY claim, call ALL FIVE agents in a single step — put all five tool calls in one response:
-  - runSourcer
-  - runJurisdictionist
-  - runHistorian
-  - runDevilsAdvocate
-  - runFirmMemory
-DO NOT call them one at a time. Call ALL FIVE simultaneously for each claim.
+STEP 2: In ONE single response, call ALL FIVE agents for ALL claims at the same time.
+For example if there are 3 claims, emit 15 tool calls at once (5 agents × 3 claims).
+DO NOT process claims one at a time. Do ALL claims in one parallel batch.
 
-STEP 3: Once you have all five results for a claim, call reportClaim immediately.
-
-STEP 4: Repeat Steps 2-3 for the next claim (you can also batch multiple claims together).
+STEP 3: Once results are back, call reportClaim for every claim in one response.
 
 RULES:
 - Never call just one or two agents and wait — always batch all five at once

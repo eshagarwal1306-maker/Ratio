@@ -117,7 +117,7 @@ export async function POST(req: Request) {
   const results = await Promise.all(
     allPersonas.map(async (persona) => {
       const result = await generateObject({
-        model: anthropic("claude-haiku-4-5-20251001"),
+        model: anthropic("claude-haiku-4-5"),
         schema: PersonaResultSchema,
         prompt: `${persona.lens}
 
