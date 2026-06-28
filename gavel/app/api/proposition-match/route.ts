@@ -1,3 +1,4 @@
+import { anthropic } from "@ai-sdk/anthropic";
 import { createOpenAI } from "@ai-sdk/openai";
 import { generateText } from "ai";
 import { z } from "zod";
@@ -110,16 +111,21 @@ Respond with ONLY a valid JSON object in this exact format (no markdown, no expl
   "key_limitation": "<main reason proposition fails or is qualified, or null>"
 }`;
 
-  const { text } = await generateText({
-    model: NEMOTRON,
-    prompt,
-  });
+  async function callModel(model: typeof NEMOTRON | ReturnType<typeof anthropic>) {
+    const { text } = await generateText({ model, prompt });
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error(`No JSON in response: ${text.slice(0, 200)}`);
+    return RunResultSchema.parse(JSON.parse(jsonMatch[0]));
+  }
 
-  // Extract JSON from the response — handle models that wrap in markdown fences
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) throw new Error(`No JSON in model response: ${text.slice(0, 200)}`);
-
-  const parsed = RunResultSchema.parse(JSON.parse(jsonMatch[0]));
+  // Try Nemotron first, fall back to Claude Haiku if it fails
+  let parsed: z.infer<typeof RunResultSchema>;
+  try {
+    parsed = await callModel(NEMOTRON);
+  } catch (e) {
+    console.warn("Nemotron failed, falling back to Claude:", e);
+    parsed = await callModel(anthropic("claude-haiku-4-5"));
+  }
 
   return {
     stance,
@@ -262,12 +268,16 @@ export async function POST(req: Request) {
     );
   }
 
-  const runs = await Promise.all(
-    tasks.map(({ stance, framing, angle }) =>
-      runSingle(caseName, caseText, proposition, stance, framing, angle)
-    )
-  );
-
-  const result = aggregate(runs, mode);
-  return Response.json(result);
+  try {
+    const runs = await Promise.all(
+      tasks.map(({ stance, framing, angle }) =>
+        runSingle(caseName, caseText, proposition, stance, framing, angle)
+      )
+    );
+    const result = aggregate(runs, mode);
+    return Response.json(result);
+  } catch (e) {
+    console.error("Proposition match error:", e);
+    return Response.json({ error: String(e) }, { status: 500 });
+  }
 }
