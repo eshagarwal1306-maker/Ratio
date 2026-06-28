@@ -64,7 +64,8 @@ const RunResultSchema = z.object({
   reasoning: z.string().describe("1-2 sentence explanation of this verdict"),
   key_limitation: z
     .string()
-    .optional()
+    .nullish()
+    .transform((v) => v ?? undefined)
     .describe(
       "The main reason the proposition fails or is qualified, if any. E.g. 'Established in commercial context, not consumer context'"
     ),
@@ -124,7 +125,7 @@ Respond with ONLY a valid JSON object in this exact format (no markdown, no expl
     parsed = await callModel(NEMOTRON);
   } catch (e) {
     console.warn("Nemotron failed, falling back to Claude:", e);
-    parsed = await callModel(anthropic("claude-haiku-4-5"));
+    parsed = await callModel(anthropic("claude-haiku-4-5-20251001"));
   }
 
   return {
